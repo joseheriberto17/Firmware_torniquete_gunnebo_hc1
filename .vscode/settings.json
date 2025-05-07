@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.cc": "cpp",
+        "*.py": "python",
+        "*.c": "c",
+        "parts.h": "c"
+    }
+}
