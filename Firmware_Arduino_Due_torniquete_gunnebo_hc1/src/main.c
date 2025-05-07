@@ -32,6 +32,12 @@
 * +--------------+----------------+	
 */
 
+#include <asf.h>
+
+void configure_pins(void);
+void handle_encoder(const uint32_t id, const uint32_t mask);
+uint8_t read_AB(void);
+
 // salidas led
 #define PIN_D3 PIO_PC28_IDX
 #define PIN_D3_MASK PIO_PC28
@@ -50,15 +56,59 @@
 #define PIN_D5_MASK PIO_PC25
 #define PIN_D5_PORT PIOC
 
-#include <asf.h>
+const int8_t qdec_table[4][4] = {
+	// to:  00   01   10   11
+	/*from 00*/ {  0, -1, +1,  0 },
+	/*from 01*/ { +1,  0,  0, -1 },
+	/*from 10*/ { -1,  0,  0, +1 },
+	/*from 11*/ {  0, +1, -1,  0 }
+};
 
-void configure_pins(void);
+// variables globales
+volatile int32_t position = 0;
+volatile uint8_t last_state = 0;
+volatile bool new_dir = true;
+
+
+
+uint8_t read_AB(void) {
+	uint8_t c1 = pio_get(PIN_D5_PORT, PIO_INPUT, PIN_D5_MASK) ? 1 : 0;
+	uint8_t c2 = pio_get(PIN_D4_PORT, PIO_INPUT, PIN_D4_MASK) ? 1 : 0;
+	return (c2 << 1) | c1;
+}
+
+// Handler llamado por fase A o fase B, encoder tipo X4
+void handle_encoder(const uint32_t id, const uint32_t mask) {
+	// lectura de los encoder
+	uint8_t new_state = read_AB();
+		
+	// validar contador
+	int8_t delta = qdec_table[last_state][new_state];
+	if (delta != 0) {
+		position += delta; // posicion
+		new_dir = (delta > 0); // direccion
+	}
+	
+	
+	if (new_dir)
+	{
+		pio_set(PIN_D2_PORT,PIN_D2_MASK);
+		pio_clear(PIN_D3_PORT,PIN_D3_MASK);
+	}
+	else
+	{
+		pio_clear(PIN_D2_PORT,PIN_D2_MASK);
+		pio_set(PIN_D3_PORT,PIN_D3_MASK);
+	}
+
+	last_state = new_state;
+}
 
 void configure_pins(void)
 {
 	// Habilitar el reloj para el PIOB
-	pmc_enable_periph_clk(ID_PIOB);	
-	pmc_enable_periph_clk(ID_PIOC);	
+	pmc_enable_periph_clk(ID_PIOB);
+	pmc_enable_periph_clk(ID_PIOC);
 	
 	// salida
 	pio_configure(PIN_D2_PORT,PIO_OUTPUT_0,PIN_D2_MASK,PIO_DEFAULT);
@@ -68,6 +118,10 @@ void configure_pins(void)
 	pio_configure(PIN_D4_PORT,PIO_INPUT,PIN_D4_MASK,PIO_DEFAULT);
 	pio_configure(PIN_D5_PORT,PIO_INPUT,PIN_D5_MASK,PIO_DEFAULT);
 	
+	// Habilitar la interrupción en el periférico y en el NVIC
+	pio_enable_interrupt(PIOC, PIN_D4_MASK|PIN_D5_MASK);
+	pio_handler_set(PIOC,ID_PIOC,PIN_D4_MASK|PIN_D5_MASK,PIO_IT_EDGE,handle_encoder);
+	NVIC_EnableIRQ(PIOC_IRQn);
 }
 
 
@@ -77,30 +131,9 @@ int main (void)
 	board_init();
 	configure_pins();
 	
-	uint8_t encoder_1=0;
-	uint8_t encoder_2=0;
+	last_state = read_AB();
+	
 	while (1) 
 	{
-		encoder_1 = pio_get(PIN_D5_PORT,PIO_INPUT,PIN_D5_MASK);
-		encoder_2 = pio_get(PIN_D4_PORT,PIO_INPUT,PIN_D4_MASK);
-
-		if (encoder_1)
-		{
-			pio_set(PIN_D3_PORT,PIN_D3_MASK);
-		} 
-		else
-		{
-			pio_clear(PIN_D3_PORT,PIN_D3_MASK);		
-		}
-		
-		if (encoder_2)
-		{
-			pio_set(PIN_D2_PORT,PIN_D2_MASK);
-		}
-		else
-		{
-			pio_clear(PIN_D2_PORT,PIN_D2_MASK);
-		}
-		delay_ms(10);
 	}
 }
