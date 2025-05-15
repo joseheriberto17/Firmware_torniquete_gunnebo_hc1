@@ -35,8 +35,11 @@
 #include <asf.h>
 
 void configure_pins(void);
+void configure_uart(void);
 void handle_encoder(const uint32_t id, const uint32_t mask);
 uint8_t read_AB(void);
+void uart_puts(Uart *uart, const char *str);
+
 
 // salidas led
 #define PIN_D3 PIO_PC28_IDX
@@ -123,15 +126,46 @@ void configure_pins(void)
 	pio_handler_set(PIOC,ID_PIOC,PIN_D4_MASK|PIN_D5_MASK,PIO_IT_EDGE,handle_encoder);
 	NVIC_EnableIRQ(PIOC_IRQn);
 }
+void configure_uart(void)
+{
+	pmc_enable_periph_clk (ID_UART);
+	
+	pio_configure(PINS_UART_PIO,PINS_UART_TYPE,PINS_UART_MASK,PINS_UART_ATTR);	
+	
+	
+	
+	sam_uart_opt_t uart_settings = {
+		.ul_mck = sysclk_get_cpu_hz(),
+		.ul_baudrate = 9600,
+		.ul_mode = UART_MR_PAR_NO  // Modo sin paridad, 8N1
+	};
+	
+	
+	
+	uart_init(UART, &uart_settings);
+	uart_enable_tx(UART);
+	uart_enable_rx(UART);
+}
 
+void uart_puts(Uart *uart, const char *str) {
+	while (*str) {
+		while (!uart_is_tx_ready(uart));
+		uart_write(uart, *str++);
+	}
+}
 
 int main (void)
 {
 	sysclk_init();
 	board_init();
 	configure_pins();
+	configure_uart();
+	
 	
 	last_state = read_AB();
+	
+	uart_puts(UART, "Hola desde UART\n");
+
 	
 	while (1) 
 	{

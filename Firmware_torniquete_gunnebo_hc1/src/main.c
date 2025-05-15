@@ -11,6 +11,9 @@
  * 	LED SEN_S: define el sentido antihorario
  * 	AMBOS LED: define la alerta de que la devolucion del paso de torniquete supero el valor de tolerancia.
  *
+ * Version: ASF 3.52
+ *
+ *
  * Autor: Jose H.
  * Fecha: 13/05/2025
  */
