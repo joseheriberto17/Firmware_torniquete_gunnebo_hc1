@@ -336,6 +336,7 @@ const int8_t qdec_table[4][4] = {
 				pio_clear(RIGHT_PIN_PORT,RIGHT_PIN_MASK);
 				pio_clear(LEFT_PIN_PORT,LEFT_PIN_MASK);
 				pase = false;
+				
 			}
 		}
 	}
