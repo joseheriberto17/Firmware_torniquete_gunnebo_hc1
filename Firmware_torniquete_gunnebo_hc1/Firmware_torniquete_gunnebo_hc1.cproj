@@ -506,6 +506,12 @@
     <Folder Include="src\config\" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="src\Escenarios.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\Escenarios.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\uart_custom.h">
       <SubType>compile</SubType>
     </Compile>

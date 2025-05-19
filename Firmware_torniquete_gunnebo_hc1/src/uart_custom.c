@@ -5,6 +5,7 @@
  *  Author: GESTION_LABORATORIO
  */
 #include <asf.h>
+#include "uart_custom.h"
 
 void uart_puts(Uart *uart, const char *str) {
 	while (*str) {

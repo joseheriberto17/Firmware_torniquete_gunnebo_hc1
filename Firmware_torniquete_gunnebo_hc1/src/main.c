@@ -28,6 +28,10 @@
  *   | CONF_A       | PA16           |
  *   | PIC_1        | PA8            |
  *   | PIC_2        | PA7            |
+ * 	 | SW2_1        | PA23           |
+ *   | SW2_2        | PA22           |
+ *   | SW2_3        | PA19           |
+ *   | SW2_4        | PA21           |
  *   +--------------+----------------+
  *
  *
@@ -38,10 +42,11 @@
 #include <asf.h>
 #include <stdio.h>
 #include "uart_custom.h"
+#include "Escenarios.h"
 
 void configure_pins(void);
-void handle_encoder(const uint32_t id, const uint32_t mask);
 void configure_uart(void);
+void handle_encoder(const uint32_t id, const uint32_t mask);
 uint8_t read_AB(void);
 
 // definicion de los parametros de la aplicacion
@@ -123,27 +128,46 @@ const int8_t qdec_table[4][4] = {
 // variables globales
 // ------------------------------------------------------------------------
 // conteo de pulsos del encoder
-volatile uint8_t last_state_encoder = 0;	// define la  ultima secuencia de los encoder (A/B).
+volatile uint8_t last_state_encoder = 0; // define la  ultima secuencia de los encoder (A/B).
 // conteo de posicion y direccion del encoder.
 volatile int32_t position_encoder = 0;		// define el micropaso actual del encoder relativo al ultimo final de carrera del torniquete.
 volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo final de carrera del torniquete, durante el proceso de un paso.
 volatile int8_t delta_last = 0;				// direccion del ultima del encoder (valor -1 y +1).
 // validacion de pase en progreso
-volatile bool end_pase = true;				// indica si position_encoder esta en un final de carrera.
-volatile bool invalid_pase = false;			// indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
+volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
+volatile bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
 // confirmacion de un pase
-volatile bool confirm_pase = false;			// confirma si permite un paso del torniquete
-volatile bool last_confirm_pase = false;	// complemento para 
+volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
+volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
-volatile bool pase = false;					// control de un pase del torniquete
-volatile bool flag_pase = 0;				// incrementador de paso
+volatile bool pase = false;	 // control de un pase del torniquete
+volatile bool flag_pase = 0; // incrementador de paso
 
 // contador de pase de torniquete
-volatile int16_t counter_pase = 0;		
-volatile int16_t acum_pase_A = 0;		// sentido A
-volatile int16_t acum_pase_B = 0;		// sentido B
-volatile int16_t acum_pase_fail = 0;		// sin autorizacion
-volatile int16_t acum_timeout = 0;		// timeout
+volatile int16_t counter_pase = 0;
+volatile int16_t acum_pase_A = 0;	 // sentido A
+volatile int16_t acum_pase_B = 0;	 // sentido B
+volatile int16_t acum_pase_fail = 0; // sin autorizacion
+volatile int16_t acum_timeout = 0;	 // timeout
+//
+//// contador global de milisegundos
+// volatile uint32_t ms_ticks = 0;
+
+//// Handler llamado cada 1 ms
+// void SysTick_Handler(void) {
+// ms_ticks++;
+//}
+//
+//// Inicializa SysTick a 1 kHz
+// void systick_init(void) {
+//// sysclk_get_cpu_hz() devuelve la frecuencia en Hz
+// SysTick_Config(sysclk_get_cpu_hz() / 1000);
+//
+//}
+//
+// uint32_t millis(void) {
+// return ms_ticks;
+//}
 
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
@@ -171,7 +195,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 		// Si estamos en el final de carrera
 		if (end_pase)
 		{
-			// si durante el pase en progreso ocurrio una devolucion
+			// si durante el pase en progreso NO ocurrio una devolucion
 			if (invalid_pase == false)
 			{
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
@@ -188,7 +212,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			}
 
 			// Reseteo de variables
-			position_encoder = 0; 
+			position_encoder = 0;
 			position_encoder_last = 0;
 			invalid_pase = false;
 
@@ -198,7 +222,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 		}
 		else
 		{
-			
+
 			// validacion de un pase en procesos
 			// ----------------------------------------------------------------
 			// Almacena la mayor distancia recorrida desde el último final de carrera
@@ -283,13 +307,14 @@ void configure_uart(void)
 		.ul_mode = UART_SERIAL_MODE // Modo sin paridad, 8N1
 	};
 
-	uart_init(UART1, &uart1_settings); 
+	uart_init(UART1, &uart1_settings);
 	NVIC_EnableIRQ(UART1_IRQn);
 	uart_enable(UART1);
 }
 
 int main(void)
 {
+	// systick_init();
 	sysclk_init();				// Inicializa reloj del sistema
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
 	board_init();				// Inicializa la placa base (ASF)
@@ -299,19 +324,20 @@ int main(void)
 	last_state_encoder = read_AB(); // Guarda estado inicial del encoder
 
 	uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
+	// uint32_t last_time = millis();
 
 	char buffer[128]; // buffer del uart
 
 	while (1)
 	{
-		
+
 		// confirmacion de 10 pasos con un interruptor
 		confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
 		if (confirm_pase != last_confirm_pase)
 		{
 			if (confirm_pase == 1)
 			{
-				
+
 				pase = true;
 				counter_pase = 10;
 			}
@@ -324,12 +350,14 @@ int main(void)
 			uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
 			snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
 											 "Giro sentido B: %d\r\n"
-											 "Giro sin autorizacion: %d\r\n"
-											 "Timeout: %d\r\n",
+											 "Giro sin autorizacion: %ld\r\n"
+											 "Timeout: %d\r\n"
+											 "esc: %01x\r\n",
 											  acum_pase_A,
 											  acum_pase_B,
 											  acum_pase_fail,
-											  acum_timeout);
+											  acum_timeout,
+											  read_ABCD());
 			uart_puts(UART1, buffer); // salida formateada
 
 			if (counter_pase > 1)
