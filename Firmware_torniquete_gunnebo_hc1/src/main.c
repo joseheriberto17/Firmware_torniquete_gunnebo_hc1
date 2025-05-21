@@ -41,6 +41,7 @@
  */
 #include <asf.h>
 #include <stdio.h>
+#include <string.h>
 #include "uart_custom.h"
 #include "Escenarios.h"
 
@@ -105,7 +106,7 @@ uint8_t read_AB(void);
 
 // configuracion del UART1 conexion directa a (RS485).
 #define UART_SERIAL_BAUDRATE 19200
-#define UART_SERIAL_BAUDRATE_485 115200 /// para pruebas 19200, para produccion 115200
+#define UART_SERIAL_BAUDRATE_485 19200
 #define UART_SERIAL_CHANNEL_MODE UART_MR_CHMODE_NORMAL
 #define UART_SERIAL_MODE UART_MR_PAR_NO
 
@@ -149,6 +150,7 @@ volatile int16_t acum_pase_A = 0;	 // sentido A
 volatile int16_t acum_pase_B = 0;	 // sentido B
 volatile int16_t acum_pase_fail = 0; // sin autorizacion
 volatile int16_t acum_timeout = 0;	 // timeout
+
 //
 //// contador global de milisegundos
 // volatile uint32_t ms_ticks = 0;
@@ -320,16 +322,32 @@ int main(void)
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
+	delay_init();
 
 	last_state_encoder = read_AB(); // Guarda estado inicial del encoder
-
-	uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
+	
+	//variables de UART1 (rs485)
+	char buffer_uart1_tx[256];
+	char buffer_uart1_rx[256];
+	
+	// Limpia toda pantalla, similar al comando clear
+	strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
+	uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx));
+	
+	
+	char data_rx = 0;
+	char data_tx = 0;
+	int count = 0;
+	
 	// uint32_t last_time = millis();
-
-	char buffer[128]; // buffer del uart
 
 	while (1)
 	{
+		// UART1 modo polling
+		if (uart_is_rx_ready(UART1))
+		{
+			uart_gets(UART1,buffer_uart1_rx,sizeof(buffer_uart1_rx));
+		}
 
 		// confirmacion de 10 pasos con un interruptor
 		confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
@@ -347,18 +365,21 @@ int main(void)
 		if (flag_pase)
 		{
 			flag_pase = 0;
-			uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
-			snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
+			strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
+			uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx)); // Limpia toda pantalla y va al tope
+			
+			//escribir su contenido en el buffer
+			snprintf(buffer_uart1_tx, sizeof(buffer_uart1_tx), "Giro sentido A: %d\r\n"
 											 "Giro sentido B: %d\r\n"
-											 "Giro sin autorizacion: %ld\r\n"
+											 "Giro sin autorizacion: %d\r\n"
 											 "Timeout: %d\r\n"
 											 "esc: %01x\r\n",
-											  acum_pase_A,
-											  acum_pase_B,
-											  acum_pase_fail,
-											  acum_timeout,
-											  read_ABCD());
-			uart_puts(UART1, buffer); // salida formateada
+					 acum_pase_A,
+					 acum_pase_B,
+					 acum_pase_fail,
+					 acum_timeout,
+					 read_ABCD());
+			uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx)); // salida formateada
 
 			if (counter_pase > 1)
 			{
@@ -379,5 +400,6 @@ int main(void)
 			pio_clear(LEFT_PIN_PORT, LEFT_PIN_MASK);
 			pase = false;
 		}
+		delay_us(100);
 	}
 }
