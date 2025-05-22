@@ -105,14 +105,13 @@ uint8_t read_AB(void);
 #define PIC_2_PIN_PORT PIOA
 
 // configuracion del UART1 conexion directa a (RS485).
-#define UART_SERIAL_BAUDRATE 19200
 #define UART_SERIAL_BAUDRATE_485 19200
 #define UART_SERIAL_CHANNEL_MODE UART_MR_CHMODE_NORMAL
 #define UART_SERIAL_MODE UART_MR_PAR_NO
 
 #define PINS_UART1 (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
 #define PINS_UART1_FLAGS (PIO_PERIPH_A | PIO_DEFAULT)
-#define PINS_UART1_MASK (PIO_PB2 | PIO_PB3)
+#define PINS_UART1_MASK (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
 #define PINS_UART1_PIO PIOB
 #define PINS_UART1_ID ID_PIOB
 #define PINS_UART1_TYPE PIO_PERIPH_A
@@ -141,17 +140,41 @@ volatile bool invalid_pase = false; // indica si durante el proceso de un paso e
 volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
 volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
-volatile bool pase = false;	 // control de un pase del torniquete
+volatile bool pase_A = false;	 // control de un pase del torniquete
 volatile bool flag_pase = 0; // incrementador de paso
 
 // contador de pase de torniquete
 volatile int16_t counter_pase = 0;
-volatile int16_t acum_pase_A = 0;	 // sentido A
-volatile int16_t acum_pase_B = 0;	 // sentido B
-volatile int16_t acum_pase_fail = 0; // sin autorizacion
-volatile int16_t acum_timeout = 0;	 // timeout
+volatile int16_t acum_pase_A = 0;	 // conteo acumulado en sentido A
+volatile int16_t acum_pase_B = 0;	 // conteo acumulado en sentido B
+volatile int16_t acum_pase_fail = 0; // conteo acumulado sin autorizacion
+volatile int16_t acum_timeout = 0;	 // conteo acumulado timeout
 
+// variables de UART1 (rs485)
+volatile char buffer_uart1_tx[256];
+volatile char buffer_uart1_rx[256];
+volatile uint8_t counter_rx = 0; 
+volatile bool flag_rx = false;
+
+
+//// comunicacion RS485
+//char	bufer_seria_tx[256];
+//unsigned char	bufer_serial_rx[256];
+//int		port_slots_write[256];
+//char	port_slots_read[256];
+//int		port_slots_default[256];
+////
+//int		data_leng = 256;
+//int		dev_id = 0x81;
+//int		escenario_temp = 0xFF;
 //
+//int		port_address = 0;
+//int		rx_idx_RS485;
+//char	funcion	= 0x20;
+//int		char_timeout_RS485 = 20;
+//char	error_code = 0x00;
+//char	escenario_v = 0x00;
+
 //// contador global de milisegundos
 // volatile uint32_t ms_ticks = 0;
 
@@ -183,16 +206,17 @@ uint8_t read_AB(void)
 // Detecta sentido, cambios y final de carrera.
 void handle_encoder(const uint32_t id, const uint32_t mask)
 {
-	uint8_t new_state_encoder = read_AB(); // lectura de los encoder
+	uint8_t new_state_encoder = read_AB(); // lectura de los pulsos de los encoders
 	// determina si esta en final de carrera.
 	end_pase = pio_get(INDEX_PIN_PORT, PIO_INPUT, INDEX_PIN_MASK) ? 1 : 0;
 
 	// validar el conteo de encoder. (+1,-1,0)
 	int8_t delta = qdec_table[last_state_encoder][new_state_encoder];
 	last_state_encoder = new_state_encoder;
+
 	if (delta != 0)
 	{
-		position_encoder += delta; // deteccion de la posicion del encoder
+		position_encoder += delta; //posicion absoluta del encoder
 
 		// Si estamos en el final de carrera
 		if (end_pase)
@@ -299,8 +323,6 @@ void configure_pins(void)
 void configure_uart(void)
 {
 	pmc_enable_periph_clk(ID_UART1);
-
-	// set the pins to use the uart peripheral
 	pio_configure(PINS_UART1_PIO, PINS_UART1_TYPE, PINS_UART1_MASK, PINS_UART1_ATTR);
 
 	sam_uart_opt_t uart1_settings = {
@@ -310,13 +332,40 @@ void configure_uart(void)
 	};
 
 	uart_init(UART1, &uart1_settings);
+	uart_enable_interrupt(UART1, UART_IER_RXRDY);
 	NVIC_EnableIRQ(UART1_IRQn);
-	uart_enable(UART1);
+
+	delay_us(500);
+}
+
+void UART1_Handler(void)
+{
+	uint32_t status = uart_get_status(UART1);
+
+	// atendemos la interrupcion por uart received.
+	if (status & UART_SR_RXRDY)
+	{
+		char data = 0;
+		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
+
+		// llenar en el buffer_rx
+		buffer_uart1_rx[counter_rx]=data;
+		counter_rx++;
+		
+		if ((unsigned char)data == 0xFC)
+		{
+			flag_rx= true;
+		}
+	}
+
+	if (status & UART_SR_OVRE)
+	{
+		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
+	}
 }
 
 int main(void)
 {
-	// systick_init();
 	sysclk_init();				// Inicializa reloj del sistema
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
 	board_init();				// Inicializa la placa base (ASF)
@@ -325,71 +374,71 @@ int main(void)
 	delay_init();
 
 	last_state_encoder = read_AB(); // Guarda estado inicial del encoder
-	
-	//variables de UART1 (rs485)
-	char buffer_uart1_tx[256];
-	char buffer_uart1_rx[256];
-	
+
 	// Limpia toda pantalla, similar al comando clear
 	strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-	uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx));
-	
-	
-	char data_rx = 0;
-	char data_tx = 0;
-	int count = 0;
-	
+	uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
+
 	// uint32_t last_time = millis();
+	
+	flag_rx = false;
 
 	while (1)
 	{
-		// UART1 modo polling
-		if (uart_is_rx_ready(UART1))
+		// procesar los datos acumulador por buffer_uart1_rx
+		// si llego al  caracter delimitador
+		if (flag_rx == true)
 		{
-			uart_gets(UART1,buffer_uart1_rx,sizeof(buffer_uart1_rx));
+			//(prueba) realizar un eco de la transmicion.
+			delay_ms(100); // generar retardo para eviar la colicion por la comunicacion RS485.
+			uart_puts(UART1, buffer_uart1_rx,counter_rx);
+			
+			// limpiar variables de recepcion
+			memset(buffer_uart1_rx, 0, sizeof(buffer_uart1_rx));
+			counter_rx = 0;
+			flag_rx = false;
 		}
-
-		// confirmacion de 10 pasos con un interruptor
-		confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
-		if (confirm_pase != last_confirm_pase)
-		{
-			if (confirm_pase == 1)
-			{
-
-				pase = true;
-				counter_pase = 10;
-			}
-			last_confirm_pase = confirm_pase;
-		}
+		
+		// // confirmacion de 10 pasos con un interruptor
+		// confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
+		// if (confirm_pase != last_confirm_pase)
+		// {
+		// 	if (confirm_pase == 1)
+		// 	{
+		// 		pase_A = true;
+		// 		counter_pase = 10;
+		// 	}
+		// 	last_confirm_pase = confirm_pase;
+		// }
 
 		if (flag_pase)
 		{
 			flag_pase = 0;
 			strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-			uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx)); // Limpia toda pantalla y va al tope
-			
-			//escribir su contenido en el buffer
+			uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx)); // Limpia toda pantalla y va al tope
+
+			// escribir su contenido en el buffer
 			snprintf(buffer_uart1_tx, sizeof(buffer_uart1_tx), "Giro sentido A: %d\r\n"
-											 "Giro sentido B: %d\r\n"
-											 "Giro sin autorizacion: %d\r\n"
-											 "Timeout: %d\r\n"
-											 "esc: %01x\r\n",
+															   "Giro sentido B: %d\r\n"
+															   "Giro sin autorizacion: %d\r\n"
+															   "Timeout: %d\r\n"
+															   "esc: %01x\r\n",
 					 acum_pase_A,
 					 acum_pase_B,
 					 acum_pase_fail,
 					 acum_timeout,
 					 read_ABCD());
-			uart_puts(UART1,buffer_uart1_tx,strlen(buffer_uart1_tx)); // salida formateada
+			uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx)); // salida formateada
 
 			if (counter_pase > 1)
 			{
-				pase = true;
+				pase_A = true;
 				counter_pase--;
 			}
 		}
 
 		// control de paso en proceso de torniquete.
-		if (pase && (abs(position_encoder_last) < 50))
+		if (pase_A && (abs(position_encoder_last) < 50))
 		{
 			pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
 			pio_set(LEFT_PIN_PORT, LEFT_PIN_MASK);
@@ -398,7 +447,7 @@ int main(void)
 		{
 			pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
 			pio_clear(LEFT_PIN_PORT, LEFT_PIN_MASK);
-			pase = false;
+			pase_A = false;
 		}
 		delay_us(100);
 	}

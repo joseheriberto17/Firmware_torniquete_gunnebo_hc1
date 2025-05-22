@@ -699,8 +699,7 @@ int main(void)
 		// {
 		// 	if (confirm_pase == 1)
 		// 	{
-				
-		// 		pase = true;
+		// 		pase_A = true;
 		// 		counter_pase = 10;
 		// 	}
 		// 	last_confirm_pase = confirm_pase;

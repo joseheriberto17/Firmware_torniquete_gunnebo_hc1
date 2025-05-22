@@ -34,7 +34,6 @@
     <option id="common.boards" value="Add" config="" content-id="Atmel.ASF" />
     <option id="common.services.basic.clock" value="Add" config="" content-id="Atmel.ASF" />
     <option id="common.services.delay" value="Add" config="" content-id="Atmel.ASF" />
-    <option id="common.services.ioport" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.pio" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.pmc" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.tc.appnote" value="Add" config="" content-id="Atmel.ASF" />
@@ -178,8 +177,6 @@
     <file path="src/ASF/common/services/clock/sysclk.h" framework="" version="3.52.0" source="common\services\clock\sysclk.h" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/common/services/clock/pll.h" framework="" version="3.52.0" source="common\services\clock\pll.h" changed="False" content-id="Atmel.ASF" />
     <file path="src/Config/conf_clock.h" framework="" version="3.52.0" source="common\services\clock\sam3s\module_config\conf_clock.h" changed="False" content-id="Atmel.ASF" />
-    <file path="src/ASF/common/services/ioport/sam/ioport_pio.h" framework="" version="3.52.0" source="common\services\ioport\sam\ioport_pio.h" changed="False" content-id="Atmel.ASF" />
-    <file path="src/ASF/common/services/ioport/ioport.h" framework="" version="3.52.0" source="common\services\ioport\ioport.h" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/sam/drivers/pio/pio_handler.c" framework="" version="3.52.0" source="sam\drivers\pio\pio_handler.c" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/sam/drivers/pio/pio_handler.h" framework="" version="3.52.0" source="sam\drivers\pio\pio_handler.h" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/common/services/delay/sam/cycle_counter.c" framework="" version="3.52.0" source="common\services\delay\sam\cycle_counter.c" changed="False" content-id="Atmel.ASF" />
@@ -273,7 +270,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -314,7 +310,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -338,7 +333,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -381,7 +375,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -423,7 +416,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -448,7 +440,6 @@
       <Value>../src/ASF/sam/drivers/pmc</Value>
       <Value>../src/ASF/sam/drivers/uart</Value>
       <Value>../src/ASF/common/services/clock</Value>
-      <Value>../src/ASF/common/services/ioport</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
     </ListValues>
@@ -468,8 +459,6 @@
     <Folder Include="src\ASF\common\services\clock\sam3s\" />
     <Folder Include="src\ASF\common\services\delay\" />
     <Folder Include="src\ASF\common\services\delay\sam\" />
-    <Folder Include="src\ASF\common\services\ioport\" />
-    <Folder Include="src\ASF\common\services\ioport\sam\" />
     <Folder Include="src\ASF\common\utils\" />
     <Folder Include="src\ASF\common\utils\interrupt\" />
     <Folder Include="src\ASF\sam\" />
@@ -807,12 +796,6 @@
       <SubType>compile</SubType>
     </None>
     <None Include="src\ASF\common\services\clock\sysclk.h">
-      <SubType>compile</SubType>
-    </None>
-    <None Include="src\ASF\common\services\ioport\sam\ioport_pio.h">
-      <SubType>compile</SubType>
-    </None>
-    <None Include="src\ASF\common\services\ioport\ioport.h">
       <SubType>compile</SubType>
     </None>
     <None Include="src\ASF\common\services\delay\delay.h">

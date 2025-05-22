@@ -16,22 +16,3 @@ void uart_puts(Uart *uart, const char *str, size_t length) {
 	}
 	memset((void *)str, 0, length);
 }
-
-// limpia el buffer rx y reescribe su contenido 
-// evitar el desbodamiento del buffer
-// finaliza con un caracter de escape 
-void uart_gets(Uart *uart, char *str, size_t length) {
-	memset(str, 0, length);
-	size_t i = 0;
-	int status = uart_is_rx_ready(uart);
-
-	//while (!uart_is_rx_ready(uart));
-
-	while (status && i < length - 1) {
-		uart_read(uart, (uint8_t *)&str[i++]);
-		status = uart_is_rx_ready(uart);
-	}
-	str[i] = '\0';  // terminación segura (recomendado, no es obligatorio)
-	
-	uart_puts(UART1,str,i);
-}
