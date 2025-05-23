@@ -33,7 +33,8 @@
           "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/syscalls/gcc",
           "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Include",
           "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Lib",
-          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Lib/GCC"
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Lib/GCC",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/drivers/pdc"
         ],
         "defines": [
           "__SAM3S1B__",
