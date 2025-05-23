@@ -117,6 +117,22 @@ uint8_t read_AB(void);
 #define PINS_UART1_TYPE PIO_PERIPH_A
 #define PINS_UART1_ATTR PIO_DEFAULT
 
+#define ERROR_UNDER	0x01	// Faltan datos, timeout
+#define ERROR_OVER	0x02	// Se enviaron mas datos de los esperados antes del caracter 0xFC
+#define ERROR_CHK	0x03	// Error de sumatoria
+#define ERROR_ACS	0x04	// Se intenta escribir una entrada
+#define ERROR_SCN	0x05	// Escenario invalido, < 16 � > 128
+
+// definicion de las direcciones de los bancps de memoria
+#define ACCUMULATOR_A               0x10
+#define ACCUMULATOR_B               0x14
+#define CONFIRMACION_FAIL			0x18
+#define ALARM_STATUS				0x1C
+#define BATTERY_STATUS				0x1D
+#define TIMEOUT_PASO				0x1E
+
+#define PASO_MODE_A			0x10
+#define PASO_MODE_B			0x11
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
 	// to:        00  01  10  11
@@ -127,12 +143,9 @@ const int8_t qdec_table[4][4] = {
 
 // variables globales
 // ------------------------------------------------------------------------
-// conteo de pulsos del encoder
-volatile uint8_t last_state_encoder = 0; // define la  ultima secuencia de los encoder (A/B).
 // conteo de posicion y direccion del encoder.
 volatile int32_t position_encoder = 0;		// define el micropaso actual del encoder relativo al ultimo final de carrera del torniquete.
 volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo final de carrera del torniquete, durante el proceso de un paso.
-volatile int8_t delta_last = 0;				// direccion del ultima del encoder (valor -1 y +1).
 // validacion de pase en progreso
 volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
 volatile bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
@@ -141,58 +154,37 @@ volatile bool confirm_pase = false;		 // confirma si permite un paso del torniqu
 volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
 volatile bool pase_A = false;	 // control de un pase del torniquete
+volatile bool pase_B = false;
 volatile bool flag_pase = 0; // incrementador de paso
 
 // contador de pase de torniquete
 volatile int16_t counter_pase = 0;
-volatile int16_t acum_pase_A = 0;	 // conteo acumulado en sentido A
-volatile int16_t acum_pase_B = 0;	 // conteo acumulado en sentido B
-volatile int16_t acum_pase_fail = 0; // conteo acumulado sin autorizacion
-volatile int16_t acum_timeout = 0;	 // conteo acumulado timeout
+volatile int16_t acum_pase_A = 0;		// sentido A
+volatile int16_t acum_pase_B = 0;		// sentido B
+volatile int16_t acum_pase_fail = 0;		// sin autorizacion
+volatile int16_t acum_timeout = 0;		// timeout
 
-// variables de UART1 (rs485)
-volatile char buffer_uart1_tx[256];
-volatile char buffer_uart1_rx[256];
-volatile uint8_t counter_rx = 0; 
-volatile bool flag_rx = false;
+volatile bool reset_acum_A = false;
+volatile bool reset_acum_B = false;
 
 
-//// comunicacion RS485
-//char	bufer_seria_tx[256];
-//unsigned char	bufer_serial_rx[256];
-//int		port_slots_write[256];
-//char	port_slots_read[256];
-//int		port_slots_default[256];
-////
-//int		data_leng = 256;
-//int		dev_id = 0x81;
-//int		escenario_temp = 0xFF;
-//
-//int		port_address = 0;
-//int		rx_idx_RS485;
-//char	funcion	= 0x20;
-//int		char_timeout_RS485 = 20;
-//char	error_code = 0x00;
-//char	escenario_v = 0x00;
+// comunicacion RS485
+volatile char	bufer_seria_tx[256];
+volatile unsigned char	bufer_serial_rx[256];
+volatile int		port_slots_write[256];
+volatile char	port_slots_read[256];
+volatile int		port_slots_default[256];
 
-//// contador global de milisegundos
-// volatile uint32_t ms_ticks = 0;
+volatile int		data_leng = 256;
+volatile int		dev_id = 0x81;
+volatile int		escenario_temp = 0xFF;
 
-//// Handler llamado cada 1 ms
-// void SysTick_Handler(void) {
-// ms_ticks++;
-//}
-//
-//// Inicializa SysTick a 1 kHz
-// void systick_init(void) {
-//// sysclk_get_cpu_hz() devuelve la frecuencia en Hz
-// SysTick_Config(sysclk_get_cpu_hz() / 1000);
-//
-//}
-//
-// uint32_t millis(void) {
-// return ms_ticks;
-//}
+volatile int		port_address = 0;
+volatile int		rx_idx_RS485;
+volatile char	funcion	= 0x20;
+volatile int		char_timeout_RS485 = 20;
+volatile char	error_code = 0x00;
+volatile char	escenario_v = 0x00;
 
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
@@ -206,27 +198,32 @@ uint8_t read_AB(void)
 // Detecta sentido, cambios y final de carrera.
 void handle_encoder(const uint32_t id, const uint32_t mask)
 {
-	uint8_t new_state_encoder = read_AB(); // lectura de los pulsos de los encoders
+	// conteo de pulsos del encoder
+	static uint8_t last_state_encoder = 0; // define la  ultima secuencia de los encoder (A/B).
+	uint8_t new_state_encoder = read_AB(); // define la secuencia actual de los encoder (A/B).
+
 	// determina si esta en final de carrera.
 	end_pase = pio_get(INDEX_PIN_PORT, PIO_INPUT, INDEX_PIN_MASK) ? 1 : 0;
 
 	// validar el conteo de encoder. (+1,-1,0)
-	int8_t delta = qdec_table[last_state_encoder][new_state_encoder];
+	int8_t new_delta = qdec_table[last_state_encoder][new_state_encoder];
 	last_state_encoder = new_state_encoder;
+	static int8_t delta_last = 0;	// direccion del ultima del encoder (valor -1 y +1).
 
-	if (delta != 0)
+	if (new_delta != 0)
 	{
-		position_encoder += delta; //posicion absoluta del encoder
+		position_encoder += new_delta; //posicion absoluta del encoder.
 
-		// Si estamos en el final de carrera
+		// Si estamos en el final de carrera.
 		if (end_pase)
 		{
-			// si durante el pase en progreso NO ocurrio una devolucion
+			// si durante el pase en progreso NO ocurrio una devolucion.
 			if (invalid_pase == false)
 			{
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
+					flag_pase = true;
 					acum_pase_B++;
 				}
 				if (position_encoder_last < -COUNTER_ENCODER_PASE)
@@ -256,7 +253,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			if (abs(position_encoder_last) < abs(position_encoder))
 			{
 				position_encoder_last = position_encoder;
-				delta_last = delta;
+				delta_last = new_delta;
 			}
 			// Si el torniquete se devuelve más allá del límite permitido,
 			// se considera como intento de reversa y se activa la bandera.
@@ -338,32 +335,338 @@ void configure_uart(void)
 	delay_us(500);
 }
 
-void UART1_Handler(void)
+void	not_ack_RS485()
 {
-	uint32_t status = uart_get_status(UART1);
-
-	// atendemos la interrupcion por uart received.
-	if (status & UART_SR_RXRDY)
+	if (bufer_serial_rx[0] != 0x80)
 	{
-		char data = 0;
-		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
-
-		// llenar en el buffer_rx
-		buffer_uart1_rx[counter_rx]=data;
-		counter_rx++;
+		bufer_seria_tx[0] = 0xA1;
+		bufer_seria_tx[1] = 0x15;
+		bufer_seria_tx[2] = error_code;
+		bufer_seria_tx[3] = -(0xA1 ^ 0x15 ^ error_code);
+		bufer_seria_tx[4] = 0xFC;
 		
-		if ((unsigned char)data == 0xFC)
-		{
-			flag_rx= true;
-		}
-	}
-
-	if (status & UART_SR_OVRE)
-	{
-		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
+		Pdc	*serial_485;
+		pdc_packet_t serial_485_TX_packet;
+		serial_485 = uart_get_pdc_base(UART1);
+		pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+		serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+		serial_485_TX_packet.ul_size = 5;
+		pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 	}
 }
 
+// void UART1_Handler(void)
+// {
+// 	uint32_t status = uart_get_status(UART1);
+
+// 	// atendemos la interrupcion por uart received.
+// 	if (status & UART_SR_RXRDY)
+// 	{
+// 		char data = 0;
+// 		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
+
+// 		// llenar en el buffer_rx
+// 		buffer_uart1_rx[counter_rx]=data;
+// 		counter_rx++;
+		
+// 		if ((unsigned char)data == 0xFC)
+// 		{
+// 			flag_rx= true;
+// 		}
+// 	}
+
+// 	if (status & UART_SR_OVRE)
+// 	{
+// 		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
+// 	}
+// }
+
+void UART1_Handler()
+{
+	unsigned int static sumatoria_v = 0;
+	char_timeout_RS485 = 20;
+	//	static	int	rx_idx;
+	uint8_t received_byte;
+	//	unsigned	int	temp_char = 0;
+	uint32_t dw_status = uart_get_status(UART1);
+
+
+
+	if(dw_status & UART_SR_RXRDY)
+	{
+		uart_read(UART1, &received_byte);
+		//			temp_char = (int)received_byte;
+		//	uart_write(UART1, received_byte);
+
+		bufer_serial_rx[rx_idx_RS485 ++] = (int)received_byte;
+		
+		if (rx_idx_RS485 == 0x01)
+		{
+			sumatoria_v = (int)received_byte;
+			data_leng = 255;
+			if (((unsigned int)received_byte != dev_id) && ((unsigned int)received_byte != 0x80))
+			{
+				rx_idx_RS485 = 0;
+				funcion = 0x20;
+			}
+		}
+
+		
+		if ((rx_idx_RS485 != 0x01) && (rx_idx_RS485 < (data_leng + 4)))
+		{
+			sumatoria_v ^= (int)received_byte;
+		}
+		
+		if (rx_idx_RS485 == 0x02)
+		{
+			if (((int)received_byte == 0x10) || ((int)received_byte == 0x1A) || ((int)received_byte == 0x1B))
+			{
+				funcion = (int)received_byte;
+			}
+			else
+			{
+				rx_idx_RS485 = 0;
+				funcion = 0x20;
+			}
+		}
+		
+		if (rx_idx_RS485 == 3)
+		{
+			port_address = (int)received_byte;
+		}
+
+		if (rx_idx_RS485 == 4)
+		{
+			data_leng = (int)received_byte;
+		}
+		
+		if (rx_idx_RS485 == 5)
+		{
+			escenario_temp = (int)received_byte;
+		}
+		
+		
+		int	i = 1;
+
+		switch (funcion)
+		{
+			case 0x10:
+
+			if (bufer_serial_rx[0] != 0x80)
+			{
+				if ((rx_idx_RS485 == 0x06) && ((int)received_byte != 0xFC))
+				{
+					error_code = ERROR_OVER;
+					not_ack_RS485();
+					char_timeout_RS485 = 0;
+					rx_idx_RS485 = 0;
+				}
+
+				
+
+				
+				sumatoria_v = (unsigned int)bufer_serial_rx[0];
+				
+				for (i = 1; i < (4); i++)
+				{
+					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
+				}
+				if ((rx_idx_RS485 == 0x06) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[4] ))
+				{
+					error_code = ERROR_CHK;
+					not_ack_RS485();
+				}
+				
+				if ((rx_idx_RS485 == 6) && ((unsigned char)received_byte == 0xFC))
+				{
+					
+					
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[4] )
+					{
+						
+						
+						sumatoria_v = 0xA1 ^ 0x10 ^ (char)port_address ^ (char)data_leng;
+						
+						bufer_seria_tx[0] = 0xA1;
+						bufer_seria_tx[1] = 0x10;
+						bufer_seria_tx[2] = (char)port_address;
+						bufer_seria_tx[3] = (char)data_leng;
+						
+						for (i = 4; i < (data_leng + 4); i++)
+						{
+							bufer_seria_tx[i] = (char)port_slots_read[port_address];
+							sumatoria_v ^= (char)port_slots_read[port_address++];
+
+							if ((port_address - 1) == ACCUMULATOR_A)
+							{
+								acum_pase_A = 0;
+								reset_acum_A = true;
+							}
+							if ((port_address - 1) == ACCUMULATOR_B)
+							{
+								acum_pase_B = 0;
+								reset_acum_B = true;
+							}
+						}
+						
+						bufer_seria_tx[i++] = -(char)sumatoria_v;
+						bufer_seria_tx[i] = 0xFC;
+						
+						Pdc	*serial_485;
+						pdc_packet_t serial_485_TX_packet;
+						serial_485 = uart_get_pdc_base(UART1);
+						pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+						serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+						serial_485_TX_packet.ul_size = (data_leng + 6);
+						pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+						
+					}
+					funcion = 0x20;
+					rx_idx_RS485 = 0;
+				}
+				
+
+			}
+			
+			break;
+			
+			
+			
+			//
+			case 0x1A:
+			sumatoria_v = (unsigned int)bufer_serial_rx[0];
+			for (i = 1; i < (data_leng + 4); i++)
+			{
+				sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
+			}
+			
+			if ((rx_idx_RS485 == (6 + data_leng)) && ((int)received_byte != 0xFC))
+			{
+				error_code = ERROR_OVER;
+				not_ack_RS485();
+			}
+			else
+			{
+				if ((rx_idx_RS485 == (0x06 + data_leng)) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[data_leng + 4] ))
+
+				{
+					error_code = ERROR_CHK;
+					not_ack_RS485();
+				}
+			}
+
+			if ((rx_idx_RS485 == (6 + data_leng)) && ((unsigned int)received_byte == 0xFC))
+			{
+
+				if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[i] )
+				{
+					if ((port_address + data_leng) < 0x80)
+					{
+						int	port_address_temp = port_address;
+						for (i = 0; i < data_leng; i++)
+						{
+							port_slots_write[port_address_temp++] = bufer_serial_rx[i + 4];
+						}
+						funcion = 0x20;
+						
+						if (bufer_serial_rx[0] != 0x80)
+						{
+							bufer_seria_tx[0] = 0xA1;
+							bufer_seria_tx[1] = 0x06;
+							bufer_seria_tx[2] = 0x00;
+							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
+							bufer_seria_tx[4] = 0xFC;
+							
+							Pdc	*serial_485;
+							pdc_packet_t serial_485_TX_packet;
+							serial_485 = uart_get_pdc_base(UART1);
+							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+							serial_485_TX_packet.ul_size = 5;
+							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+						}
+					}
+					else
+					{
+						error_code = ERROR_ACS;
+						not_ack_RS485();
+					}
+				}
+			}
+			
+			break;
+
+			case 0x1B:
+
+			if (bufer_serial_rx[0] != 0x80)
+			{
+				if ((rx_idx_RS485 == 0x07) && ((int)received_byte != 0xFC))
+				{
+					error_code = ERROR_OVER;
+					not_ack_RS485();
+					char_timeout_RS485 = 0;
+					rx_idx_RS485 = 0;
+				}
+
+
+				sumatoria_v = (unsigned int)bufer_serial_rx[0];
+				
+				for (i = 1; i < (5); i++)
+				{
+					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
+				}
+				
+				if ((rx_idx_RS485 == 0x07) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[5] ))
+				{
+					error_code = ERROR_CHK;
+					not_ack_RS485();
+				}
+				
+				if ((rx_idx_RS485 == 7) && ((unsigned char)received_byte == 0xFC))
+				{
+					
+					
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[5] )
+					{
+						
+							bufer_seria_tx[0] = 0xA1;
+							bufer_seria_tx[1] = 0x06;
+							bufer_seria_tx[2] = 0x00;
+							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
+							bufer_seria_tx[4] = 0xFC;
+							
+							Pdc	*serial_485;
+							pdc_packet_t serial_485_TX_packet;
+							serial_485 = uart_get_pdc_base(UART1);
+							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+							serial_485_TX_packet.ul_size = 5;
+							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+						//}
+						
+
+						
+					}
+					funcion = 0x20;
+					rx_idx_RS485 = 0;
+				}
+				
+
+			}
+			
+			break;
+			
+			
+		}
+
+		if (rx_idx_RS485 == (6 + data_leng))
+		{
+			rx_idx_RS485 = 0;
+			funcion = 0x20;
+		}
+		
+	}
+}
 int main(void)
 {
 	sysclk_init();				// Inicializa reloj del sistema
@@ -373,30 +676,25 @@ int main(void)
 	configure_uart();			// Configura E/S y habilita interrupciones
 	delay_init();
 
-	last_state_encoder = read_AB(); // Guarda estado inicial del encoder
+	//last_state_encoder = read_AB(); // Guarda estado inicial del encoder
 
 	// Limpia toda pantalla, similar al comando clear
-	strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-	uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
+	// strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
+	// uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
 
-	// uint32_t last_time = millis();
+	// // uint32_t last_time = millis();
 	
-	flag_rx = false;
+	// flag_rx = false;
 
 	while (1)
 	{
-		// procesar los datos acumulador por buffer_uart1_rx
-		// si llego al  caracter delimitador
-		if (flag_rx == true)
-		{
-			//(prueba) realizar un eco de la transmicion.
-			delay_ms(100); // generar retardo para eviar la colicion por la comunicacion RS485.
-			uart_puts(UART1, buffer_uart1_rx,counter_rx);
-			
-			// limpiar variables de recepcion
-			memset(buffer_uart1_rx, 0, sizeof(buffer_uart1_rx));
-			counter_rx = 0;
-			flag_rx = false;
+
+		if (port_slots_write[PASO_MODE_A] == 0xFF) {
+			pase_A = true;	
+			port_slots_write[PASO_MODE_A] = 0x00;
+		} else if (port_slots_write[PASO_MODE_B] == 0xFF) {  // no se debe emitar pasos en los dos sentidos
+			pase_B = true;	
+			port_slots_write[PASO_MODE_B] = 0x00;
 		}
 		
 		// // confirmacion de 10 pasos con un interruptor
@@ -411,32 +709,43 @@ int main(void)
 		// 	last_confirm_pase = confirm_pase;
 		// }
 
-		if (flag_pase)
+		if (flag_pase || reset_acum_A || reset_acum_B)
 		{
-			flag_pase = 0;
-			strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-			uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx)); // Limpia toda pantalla y va al tope
+			flag_pase = false;
+			reset_acum_A = false;
+			reset_acum_B = false;
+			// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
+			// snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
+			// 								 "Giro sentido B: %d\r\n"
+			// 								 "Giro sin autorizacion: %d\r\n"
+			// 								 "Timeout: %d\r\n",
+			// 								  acum_pase_A,
+			// 								  acum_pase_B,
+			// 								  acum_pase_fail,
+			// 								  acum_timeout);
+			// uart_puts(UART1, buffer); // salida formateada
 
-			// escribir su contenido en el buffer
-			snprintf(buffer_uart1_tx, sizeof(buffer_uart1_tx), "Giro sentido A: %d\r\n"
-															   "Giro sentido B: %d\r\n"
-															   "Giro sin autorizacion: %d\r\n"
-															   "Timeout: %d\r\n"
-															   "esc: %01x\r\n",
-					 acum_pase_A,
-					 acum_pase_B,
-					 acum_pase_fail,
-					 acum_timeout,
-					 read_ABCD());
-			uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx)); // salida formateada
-
-			if (counter_pase > 1)
-			{
-				pase_A = true;
-				counter_pase--;
+			for (int i = 0; i < sizeof(acum_pase_A); i++) {
+					port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
 			}
+			for (int i = 0; i < sizeof(acum_pase_B); i++) {
+					port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
+			}
+			for (int i = 0; i < sizeof(acum_pase_fail); i++) {
+					port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
+			}
+			for (int i = 0; i < sizeof(acum_timeout); i++) {
+					port_slots_read[TIMEOUT_PASO + i] = acum_timeout >> (i * 8);
+			}
+
+			// if (counter_pase > 1)
+			// {
+			// 	pase = true;
+			// 	counter_pase--;
+			// }
 		}
 
+		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
 		// control de paso en proceso de torniquete.
 		if (pase_A && (abs(position_encoder_last) < 50))
 		{
@@ -449,6 +758,10 @@ int main(void)
 			pio_clear(LEFT_PIN_PORT, LEFT_PIN_MASK);
 			pase_A = false;
 		}
+
 		delay_us(100);
+
+		
+
 	}
 }

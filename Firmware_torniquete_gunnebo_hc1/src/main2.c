@@ -113,6 +113,12 @@ uint8_t read_AB(void);
 #define PINS_UART1_TYPE PIO_PERIPH_A
 #define PINS_UART1_ATTR PIO_DEFAULT
 
+#define ERROR_UNDER	0x01	// Faltan datos, timeout
+#define ERROR_OVER	0x02	// Se enviaron mas datos de los esperados antes del caracter 0xFC
+#define ERROR_CHK	0x03	// Error de sumatoria
+#define ERROR_ACS	0x04	// Se intenta escribir una entrada
+#define ERROR_SCN	0x05	// Escenario invalido, < 16 � > 128
+
 // definicion de las direcciones de los bancps de memoria
 #define ACCUMULATOR_A               0x10
 #define ACCUMULATOR_B               0x14
@@ -729,7 +735,7 @@ int main(void)
 					port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
 			}
 			for (int i = 0; i < sizeof(acum_timeout); i++) {
-					port_slots_read[TIMEOUT + i] = acum_timeout >> (i * 8);
+					port_slots_read[TIMEOUT_PASO + i] = acum_timeout >> (i * 8);
 			}
 
 			// if (counter_pase > 1)

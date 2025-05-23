@@ -1,16 +1,60 @@
 {
     "configurations": [
-        {
-            "name": "Win32",
-            "includePath": [
-                "${workspaceFolder}/**"
-            ],
-            "defines": [
-                "_DEBUG",
-                "UNICODE",
-                "_UNICODE"
-            ]
+      {
+        "name": "SAM3S1B",
+        "includePath": [
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/config",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/boards",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/boards/user_board",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/services/clock",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/services/clock/sam3s",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/services/delay",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/services/delay/sam",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/utils",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/common/utils/interrupt",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/drivers/pio",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/drivers/pmc",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/drivers/tc",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/drivers/uart",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/include",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/include/component",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/include/instance",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/include/pio",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/source",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/source/templates",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/cmsis/sam3s/source/templates/gcc",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/header_files",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/preprocessor",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/syscalls",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/sam/utils/syscalls/gcc",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Include",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Lib",
+          "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src/ASF/thirdparty/CMSIS/Lib/GCC"
+        ],
+        "defines": [
+          "__SAM3S1B__",
+          "DEBUG",
+          "BOARD=USER_BOARD",
+          "scanf=iscanf",
+          "printf=iprintf",
+          "ARM_MATH_CM3=true"
+        ],
+        "compilerPath": "C:/Program Files (x86)/Atmel/Studio/7.0/toolchain/arm/arm-gnu-toolchain/bin/arm-none-eabi-gcc.exe",
+        "cStandard": "gnu99",
+        "cppStandard": "c++11",
+        "intelliSenseMode": "gcc-arm",
+        "browse": {
+          "path": [
+            "${workspaceFolder}/Firmware_torniquete_gunnebo_hc1/src"
+          ],
+          "limitSymbolsToIncludedHeaders": true
         }
+      }
     ],
     "version": 4
-}
+  }
+  

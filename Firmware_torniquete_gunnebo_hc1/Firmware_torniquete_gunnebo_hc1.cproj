@@ -38,6 +38,7 @@
     <option id="sam.drivers.pmc" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.tc.appnote" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.drivers.uart" value="Add" config="" content-id="Atmel.ASF" />
+    <option id="sam.drivers.pdc" value="Add" config="" content-id="Atmel.ASF" />
     <option id="sam.utils.linker_scripts#atsam3s1" value="Add" config="" content-id="Atmel.ASF" />
   </options>
   <configurations>
@@ -185,6 +186,9 @@
     <file path="src/ASF/sam/drivers/tc/tc.c" framework="" version="3.52.0" source="sam\drivers\tc\tc.c" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/sam/drivers/tc/tc.h" framework="" version="3.52.0" source="sam\drivers\tc\tc.h" changed="False" content-id="Atmel.ASF" />
     <file path="src/ASF/sam/drivers/tc/tc_capture_waveform_example/tc_capture_waveform_example.h" framework="" version="3.52.0" source="sam\drivers\tc\tc_capture_waveform_example\tc_capture_waveform_example.h" changed="False" content-id="Atmel.ASF" />
+    <file path="src/ASF/sam/drivers/pdc/pdc.c" framework="" version="3.52.0" source="sam\drivers\pdc\pdc.c" changed="False" content-id="Atmel.ASF" />
+    <file path="src/ASF/sam/drivers/pdc/pdc.h" framework="" version="3.52.0" source="sam\drivers\pdc\pdc.h" changed="False" content-id="Atmel.ASF" />
+    <file path="src/ASF/sam/drivers/pdc/pdc_uart_example/pdc_uart_example.h" framework="" version="3.52.0" source="sam\drivers\pdc\pdc_uart_example\pdc_uart_example.h" changed="False" content-id="Atmel.ASF" />
   </files>
   <documentation help="https://asf.microchip.com/docs/3.52.0/common.applications.user_application.user_board.sam3s/html/index.html" />
   <offline-documentation help="" />
@@ -272,6 +276,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.compiler.directories.IncludePaths>
   <armgcc.compiler.optimization.level>Optimize for size (-Os)</armgcc.compiler.optimization.level>
@@ -312,6 +318,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.assembler.general.IncludePaths>
   <armgcc.preprocessingassembler.general.AssemblerFlags>-DARM_MATH_CM3=true -DBOARD=USER_BOARD -Dprintf=iprintf -Dscanf=iscanf</armgcc.preprocessingassembler.general.AssemblerFlags>
@@ -335,6 +343,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.preprocessingassembler.general.IncludePaths>
 </ArmGcc>
@@ -377,6 +387,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.compiler.directories.IncludePaths>
   <armgcc.compiler.optimization.level>Optimize (-O1)</armgcc.compiler.optimization.level>
@@ -418,6 +430,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.assembler.general.IncludePaths>
   <armgcc.assembler.debugging.DebugLevel>Default (-g)</armgcc.assembler.debugging.DebugLevel>
@@ -442,6 +456,8 @@
       <Value>../src/ASF/common/services/clock</Value>
       <Value>../src/ASF/common/services/delay</Value>
       <Value>../src/ASF/sam/drivers/tc</Value>
+      <Value>../src/ASF/sam/drivers/pdc</Value>
+      <Value>../src/ASF/sam/drivers/pdc/pdc_uart_example</Value>
     </ListValues>
   </armgcc.preprocessingassembler.general.IncludePaths>
   <armgcc.preprocessingassembler.debugging.DebugLevel>Default (-Wa,-g)</armgcc.preprocessingassembler.debugging.DebugLevel>
@@ -463,6 +479,8 @@
     <Folder Include="src\ASF\common\utils\interrupt\" />
     <Folder Include="src\ASF\sam\" />
     <Folder Include="src\ASF\sam\drivers\" />
+    <Folder Include="src\ASF\sam\drivers\pdc\" />
+    <Folder Include="src\ASF\sam\drivers\pdc\pdc_uart_example\" />
     <Folder Include="src\ASF\sam\drivers\pio\" />
     <Folder Include="src\ASF\sam\drivers\pmc\" />
     <Folder Include="src\ASF\sam\drivers\tc\" />
@@ -495,6 +513,15 @@
     <Folder Include="src\config\" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="src\ASF\sam\drivers\pdc\pdc.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <None Include="src\ASF\sam\drivers\pdc\pdc.h">
+      <SubType>compile</SubType>
+    </None>
+    <None Include="src\ASF\sam\drivers\pdc\pdc_uart_example\pdc_uart_example.h">
+      <SubType>compile</SubType>
+    </None>
     <Compile Include="src\Escenarios.c">
       <SubType>compile</SubType>
     </Compile>
