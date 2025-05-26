@@ -47,7 +47,7 @@
 
 void configure_pins(void);
 void configure_uart(void);
-void handle_encoder(const uint32_t id, const uint32_t mask);
+void Encoder_Handler(const uint32_t id, const uint32_t mask);
 uint8_t read_AB(void);
 
 // definicion de los parametros de la aplicacion
@@ -192,7 +192,7 @@ uint8_t read_AB(void)
 
 // funcion handler para la interrupcion para la logica del encoder (A/B)
 // Detecta sentido, cambios y final de carrera.
-void handle_encoder(const uint32_t id, const uint32_t mask)
+void Encoder_Handler(const uint32_t id, const uint32_t mask)
 {
 	static bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
 	
@@ -309,7 +309,7 @@ void configure_pins(void)
 
 	pio_configure_interrupt(SEN_I_PIN_PORT, SEN_I_PIN_MASK, PIO_IT_EDGE);
 	pio_configure_interrupt(SEN_S_PIN_PORT, SEN_S_PIN_MASK, PIO_IT_EDGE);
-	pio_handler_set(PIOB, ID_PIOB, SEN_I_PIN_MASK | SEN_S_PIN_MASK, PIO_IT_EDGE, handle_encoder);
+	pio_handler_set(PIOB, ID_PIOB, SEN_I_PIN_MASK | SEN_S_PIN_MASK, PIO_IT_EDGE, Encoder_Handler);
 
 	// Habilitar la interrupcion en el periferico y en el NVIC
 	pio_enable_interrupt(PIOB, SEN_I_PIN_MASK | SEN_S_PIN_MASK);
@@ -380,12 +380,12 @@ void UART1_Handler()
 				funcion = 0x20;
 			}
 		}
-
+		// acumulador para checksum
 		if ((rx_idx_RS485 != 0x01) && (rx_idx_RS485 < (data_leng + 4)))
 		{
 			sumatoria_v ^= (int)received_byte;
 		}
-
+		// funciones pricipales de protocolo (lectura 0x10) ( escritura 0x1A)
 		if (rx_idx_RS485 == 0x02)
 		{
 			if (((int)received_byte == 0x10) || ((int)received_byte == 0x1A) || ((int)received_byte == 0x1B))

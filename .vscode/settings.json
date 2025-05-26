@@ -3,7 +3,8 @@
         "*.cc": "cpp",
         "*.py": "python",
         "*.c": "c",
-        "parts.h": "c"
+        "parts.h": "c",
+        "asf.h": "c"
     },
     "C_Cpp.default.compilerPath": ""
 }
