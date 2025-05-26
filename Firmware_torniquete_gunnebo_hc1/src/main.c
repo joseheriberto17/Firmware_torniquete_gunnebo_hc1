@@ -117,22 +117,22 @@ uint8_t read_AB(void);
 #define PINS_UART1_TYPE PIO_PERIPH_A
 #define PINS_UART1_ATTR PIO_DEFAULT
 
-#define ERROR_UNDER	0x01	// Faltan datos, timeout
-#define ERROR_OVER	0x02	// Se enviaron mas datos de los esperados antes del caracter 0xFC
-#define ERROR_CHK	0x03	// Error de sumatoria
-#define ERROR_ACS	0x04	// Se intenta escribir una entrada
-#define ERROR_SCN	0x05	// Escenario invalido, < 16 � > 128
+#define ERROR_UNDER 0x01 // Faltan datos, timeout
+#define ERROR_OVER 0x02	 // Se enviaron mas datos de los esperados antes del caracter 0xFC
+#define ERROR_CHK 0x03	 // Error de sumatoria
+#define ERROR_ACS 0x04	 // Se intenta escribir una entrada
+#define ERROR_SCN 0x05	 // Escenario invalido, < 16 � > 128
 
 // definicion de las direcciones de los bancps de memoria
-#define ACCUMULATOR_A               0x10
-#define ACCUMULATOR_B               0x14
-#define CONFIRMACION_FAIL			0x18
-#define ALARM_STATUS				0x1C
-#define BATTERY_STATUS				0x1D
-#define TIMEOUT_PASO				0x1E
+#define ACCUMULATOR_A 0x10
+#define ACCUMULATOR_B 0x14
+#define CONFIRMACION_FAIL 0x18
+#define ALARM_STATUS 0x1C
+#define BATTERY_STATUS 0x1D
+#define TIMEOUT_PASO 0x1E
 
-#define PASO_MODE_A			0x10
-#define PASO_MODE_B			0x11
+#define PASO_MODE_A 0x10
+#define PASO_MODE_B 0x11
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
 	// to:        00  01  10  11
@@ -153,38 +153,35 @@ volatile bool invalid_pase = false; // indica si durante el proceso de un paso e
 volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
 volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
-volatile bool pase_A = false;	 // control de un pase del torniquete
+volatile bool pase_A = false; // control de un pase del torniquete
 volatile bool pase_B = false;
-volatile bool flag_pase = 0; // incrementador de paso
 
 // contador de pase de torniquete
 volatile int16_t counter_pase = 0;
-volatile int16_t acum_pase_A = 0;		// sentido A
-volatile int16_t acum_pase_B = 0;		// sentido B
-volatile int16_t acum_pase_fail = 0;		// sin autorizacion
-volatile int16_t acum_timeout = 0;		// timeout
+volatile int16_t acum_pase_A = 0;	 // sentido A
+volatile int16_t acum_pase_B = 0;	 // sentido B
+volatile int16_t acum_pase_fail = 0; // sin autorizacion
+volatile int16_t acum_timeout = 0;	 // timeout
 
-volatile bool reset_acum_A = false;
-volatile bool reset_acum_B = false;
-
+volatile bool timeout_pase = false;
 
 // comunicacion RS485
-volatile char	bufer_seria_tx[256];
-volatile unsigned char	bufer_serial_rx[256];
-volatile int		port_slots_write[256];
-volatile char	port_slots_read[256];
-volatile int		port_slots_default[256];
+volatile char bufer_seria_tx[256];
+volatile unsigned char bufer_serial_rx[256];
+volatile int port_slots_write[256];
+volatile char port_slots_read[256];
+volatile int port_slots_default[256];
 
-volatile int		data_leng = 256;
-volatile int		dev_id = 0x81;
-volatile int		escenario_temp = 0xFF;
+volatile int data_leng = 256;
+volatile int dev_id = 0x81;
+volatile int escenario_temp = 0xFF;
 
-volatile int		port_address = 0;
-volatile int		rx_idx_RS485;
-volatile char	funcion	= 0x20;
-volatile int		char_timeout_RS485 = 20;
-volatile char	error_code = 0x00;
-volatile char	escenario_v = 0x00;
+volatile int port_address = 0;
+volatile int rx_idx_RS485;
+volatile char funcion = 0x20;
+volatile int char_timeout_RS485 = 20;
+volatile char error_code = 0x00;
+volatile char escenario_v = 0x00;
 
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
@@ -208,11 +205,11 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 	// validar el conteo de encoder. (+1,-1,0)
 	int8_t new_delta = qdec_table[last_state_encoder][new_state_encoder];
 	last_state_encoder = new_state_encoder;
-	static int8_t delta_last = 0;	// direccion del ultima del encoder (valor -1 y +1).
+	static int8_t delta_last = 0; // direccion del ultima del encoder (valor -1 y +1).
 
 	if (new_delta != 0)
 	{
-		position_encoder += new_delta; //posicion absoluta del encoder.
+		position_encoder += new_delta; // posicion absoluta del encoder.
 
 		// Si estamos en el final de carrera.
 		if (end_pase)
@@ -223,13 +220,11 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
-					flag_pase = true;
 					acum_pase_B++;
 				}
 				if (position_encoder_last < -COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_2_PIN); // Giro en sentido antihorario.
-					flag_pase = true;
 					acum_pase_A++;
 				}
 			}
@@ -272,6 +267,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				pio_set(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 				pio_set(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
+				acum_pase_fail++;
 			}
 			else if (delta_last > 0)
 			{
@@ -335,7 +331,14 @@ void configure_uart(void)
 	delay_us(500);
 }
 
-void	not_ack_RS485()
+void configure_timer()
+{
+	pmc_enable_periph_clk(ID_TC_WAVEFORM);
+	tc_init(TC, TC_CHANNEL_WAVEFORM,TC_CMR_WAVE | TC_CMR_WAVSEL_UP);  // libre-corrido
+	tc_start(TC, TC_CHANNEL_WAVEFORM);
+}
+
+void not_ack_RS485()
 {
 	if (bufer_serial_rx[0] != 0x80)
 	{
@@ -344,42 +347,18 @@ void	not_ack_RS485()
 		bufer_seria_tx[2] = error_code;
 		bufer_seria_tx[3] = -(0xA1 ^ 0x15 ^ error_code);
 		bufer_seria_tx[4] = 0xFC;
-		
-		Pdc	*serial_485;
-		pdc_packet_t serial_485_TX_packet;
-		serial_485 = uart_get_pdc_base(UART1);
-		pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-		serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-		serial_485_TX_packet.ul_size = 5;
-		pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+
+		uart_puts(UART1, bufer_seria_tx, 5);
+
+		// Pdc	*serial_485;
+		// pdc_packet_t serial_485_TX_packet;
+		// serial_485 = uart_get_pdc_base(UART1);
+		// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+		// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+		// serial_485_TX_packet.ul_size = 5;
+		// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 	}
 }
-
-// void UART1_Handler(void)
-// {
-// 	uint32_t status = uart_get_status(UART1);
-
-// 	// atendemos la interrupcion por uart received.
-// 	if (status & UART_SR_RXRDY)
-// 	{
-// 		char data = 0;
-// 		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
-
-// 		// llenar en el buffer_rx
-// 		buffer_uart1_rx[counter_rx]=data;
-// 		counter_rx++;
-		
-// 		if ((unsigned char)data == 0xFC)
-// 		{
-// 			flag_rx= true;
-// 		}
-// 	}
-
-// 	if (status & UART_SR_OVRE)
-// 	{
-// 		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
-// 	}
-// }
 
 void UART1_Handler()
 {
@@ -390,16 +369,14 @@ void UART1_Handler()
 	//	unsigned	int	temp_char = 0;
 	uint32_t dw_status = uart_get_status(UART1);
 
-
-
-	if(dw_status & UART_SR_RXRDY)
+	if (dw_status & UART_SR_RXRDY)
 	{
 		uart_read(UART1, &received_byte);
 		//			temp_char = (int)received_byte;
 		//	uart_write(UART1, received_byte);
 
-		bufer_serial_rx[rx_idx_RS485 ++] = (int)received_byte;
-		
+		bufer_serial_rx[rx_idx_RS485++] = (int)received_byte;
+
 		if (rx_idx_RS485 == 0x01)
 		{
 			sumatoria_v = (int)received_byte;
@@ -411,12 +388,11 @@ void UART1_Handler()
 			}
 		}
 
-		
 		if ((rx_idx_RS485 != 0x01) && (rx_idx_RS485 < (data_leng + 4)))
 		{
 			sumatoria_v ^= (int)received_byte;
 		}
-		
+
 		if (rx_idx_RS485 == 0x02)
 		{
 			if (((int)received_byte == 0x10) || ((int)received_byte == 0x1A) || ((int)received_byte == 0x1B))
@@ -429,7 +405,7 @@ void UART1_Handler()
 				funcion = 0x20;
 			}
 		}
-		
+
 		if (rx_idx_RS485 == 3)
 		{
 			port_address = (int)received_byte;
@@ -439,18 +415,17 @@ void UART1_Handler()
 		{
 			data_leng = (int)received_byte;
 		}
-		
+
 		if (rx_idx_RS485 == 5)
 		{
 			escenario_temp = (int)received_byte;
 		}
-		
-		
-		int	i = 1;
+
+		int i = 1;
 
 		switch (funcion)
 		{
-			case 0x10:
+		case 0x10:
 
 			if (bufer_serial_rx[0] != 0x80)
 			{
@@ -462,36 +437,31 @@ void UART1_Handler()
 					rx_idx_RS485 = 0;
 				}
 
-				
-
-				
 				sumatoria_v = (unsigned int)bufer_serial_rx[0];
-				
+
 				for (i = 1; i < (4); i++)
 				{
 					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 				}
-				if ((rx_idx_RS485 == 0x06) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[4] ))
+				if ((rx_idx_RS485 == 0x06) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[4]))
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
 				}
-				
+
 				if ((rx_idx_RS485 == 6) && ((unsigned char)received_byte == 0xFC))
 				{
-					
-					
-					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[4] )
+
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[4])
 					{
-						
-						
+
 						sumatoria_v = 0xA1 ^ 0x10 ^ (char)port_address ^ (char)data_leng;
-						
+
 						bufer_seria_tx[0] = 0xA1;
 						bufer_seria_tx[1] = 0x10;
 						bufer_seria_tx[2] = (char)port_address;
 						bufer_seria_tx[3] = (char)data_leng;
-						
+
 						for (i = 4; i < (data_leng + 4); i++)
 						{
 							bufer_seria_tx[i] = (char)port_slots_read[port_address];
@@ -500,46 +470,49 @@ void UART1_Handler()
 							if ((port_address - 1) == ACCUMULATOR_A)
 							{
 								acum_pase_A = 0;
-								reset_acum_A = true;
 							}
 							if ((port_address - 1) == ACCUMULATOR_B)
 							{
 								acum_pase_B = 0;
-								reset_acum_B = true;
+							}
+							if ((port_address - 1) == CONFIRMACION_FAIL)
+							{
+								acum_pase_fail = 0;
+							}
+							if ((port_address - 1) == TIMEOUT_PASO)
+							{
+								timeout_pase = false;
 							}
 						}
-						
+
 						bufer_seria_tx[i++] = -(char)sumatoria_v;
 						bufer_seria_tx[i] = 0xFC;
-						
-						Pdc	*serial_485;
-						pdc_packet_t serial_485_TX_packet;
-						serial_485 = uart_get_pdc_base(UART1);
-						pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-						serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-						serial_485_TX_packet.ul_size = (data_leng + 6);
-						pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
-						
+
+						uart_puts(UART1, bufer_seria_tx, (data_leng + 6));
+
+						// Pdc	*serial_485;
+						// pdc_packet_t serial_485_TX_packet;
+						// serial_485 = uart_get_pdc_base(UART1);
+						// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+						// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+						// serial_485_TX_packet.ul_size = (data_leng + 6);
+						// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 					}
 					funcion = 0x20;
 					rx_idx_RS485 = 0;
 				}
-				
-
 			}
-			
+
 			break;
-			
-			
-			
-			//
-			case 0x1A:
+
+		//
+		case 0x1A:
 			sumatoria_v = (unsigned int)bufer_serial_rx[0];
 			for (i = 1; i < (data_leng + 4); i++)
 			{
 				sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 			}
-			
+
 			if ((rx_idx_RS485 == (6 + data_leng)) && ((int)received_byte != 0xFC))
 			{
 				error_code = ERROR_OVER;
@@ -547,7 +520,7 @@ void UART1_Handler()
 			}
 			else
 			{
-				if ((rx_idx_RS485 == (0x06 + data_leng)) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[data_leng + 4] ))
+				if ((rx_idx_RS485 == (0x06 + data_leng)) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[data_leng + 4]))
 
 				{
 					error_code = ERROR_CHK;
@@ -558,17 +531,17 @@ void UART1_Handler()
 			if ((rx_idx_RS485 == (6 + data_leng)) && ((unsigned int)received_byte == 0xFC))
 			{
 
-				if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[i] )
+				if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[i])
 				{
 					if ((port_address + data_leng) < 0x80)
 					{
-						int	port_address_temp = port_address;
+						int port_address_temp = port_address;
 						for (i = 0; i < data_leng; i++)
 						{
 							port_slots_write[port_address_temp++] = bufer_serial_rx[i + 4];
 						}
 						funcion = 0x20;
-						
+
 						if (bufer_serial_rx[0] != 0x80)
 						{
 							bufer_seria_tx[0] = 0xA1;
@@ -576,14 +549,16 @@ void UART1_Handler()
 							bufer_seria_tx[2] = 0x00;
 							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
 							bufer_seria_tx[4] = 0xFC;
-							
-							Pdc	*serial_485;
-							pdc_packet_t serial_485_TX_packet;
-							serial_485 = uart_get_pdc_base(UART1);
-							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-							serial_485_TX_packet.ul_size = 5;
-							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+
+							uart_puts(UART1, bufer_seria_tx, 5);
+
+							// Pdc	*serial_485;
+							// pdc_packet_t serial_485_TX_packet;
+							// serial_485 = uart_get_pdc_base(UART1);
+							// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+							// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+							// serial_485_TX_packet.ul_size = 5;
+							// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 						}
 					}
 					else
@@ -593,10 +568,10 @@ void UART1_Handler()
 					}
 				}
 			}
-			
+
 			break;
 
-			case 0x1B:
+		case 0x1B:
 
 			if (bufer_serial_rx[0] != 0x80)
 			{
@@ -608,55 +583,47 @@ void UART1_Handler()
 					rx_idx_RS485 = 0;
 				}
 
-
 				sumatoria_v = (unsigned int)bufer_serial_rx[0];
-				
+
 				for (i = 1; i < (5); i++)
 				{
 					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 				}
-				
-				if ((rx_idx_RS485 == 0x07) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[5] ))
+
+				if ((rx_idx_RS485 == 0x07) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[5]))
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
 				}
-				
+
 				if ((rx_idx_RS485 == 7) && ((unsigned char)received_byte == 0xFC))
 				{
-					
-					
-					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[5] )
-					{
-						
-							bufer_seria_tx[0] = 0xA1;
-							bufer_seria_tx[1] = 0x06;
-							bufer_seria_tx[2] = 0x00;
-							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
-							bufer_seria_tx[4] = 0xFC;
-							
-							Pdc	*serial_485;
-							pdc_packet_t serial_485_TX_packet;
-							serial_485 = uart_get_pdc_base(UART1);
-							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-							serial_485_TX_packet.ul_size = 5;
-							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
-						//}
-						
 
-						
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[5])
+					{
+
+						bufer_seria_tx[0] = 0xA1;
+						bufer_seria_tx[1] = 0x06;
+						bufer_seria_tx[2] = 0x00;
+						bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
+						bufer_seria_tx[4] = 0xFC;
+
+						uart_puts(UART1, bufer_seria_tx, 5);
+
+						// Pdc	*serial_485;
+						// pdc_packet_t serial_485_TX_packet;
+						// serial_485 = uart_get_pdc_base(UART1);
+						// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+						// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+						// serial_485_TX_packet.ul_size = 5;
+						// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 					}
 					funcion = 0x20;
 					rx_idx_RS485 = 0;
 				}
-				
-
 			}
-			
+
 			break;
-			
-			
 		}
 
 		if (rx_idx_RS485 == (6 + data_leng))
@@ -664,7 +631,6 @@ void UART1_Handler()
 			rx_idx_RS485 = 0;
 			funcion = 0x20;
 		}
-		
 	}
 }
 int main(void)
@@ -674,94 +640,92 @@ int main(void)
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
+
 	delay_init();
 
-	//last_state_encoder = read_AB(); // Guarda estado inicial del encoder
-
-	// Limpia toda pantalla, similar al comando clear
-	// strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-	// uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
-
-	// // uint32_t last_time = millis();
-	
-	// flag_rx = false;
+	bool control_pase = false;
+	bool one_pulse_pase = false;
+	uint32_t timer_pase = 0;
+	uint32_t last_time = 0;
 
 	while (1)
 	{
 
-		if (port_slots_write[PASO_MODE_A] == 0xFF) {
-			pase_A = true;	
+		if (port_slots_write[PASO_MODE_A] == 0xFF)
+		{
+			pase_A = true;
 			port_slots_write[PASO_MODE_A] = 0x00;
-		} else if (port_slots_write[PASO_MODE_B] == 0xFF) {  // no se debe emitar pasos en los dos sentidos
-			pase_B = true;	
+		}
+		else if (port_slots_write[PASO_MODE_B] == 0xFF)
+		{ // no se debe emitar pasos en los dos sentidos
+			pase_B = true;
 			port_slots_write[PASO_MODE_B] = 0x00;
 		}
-		
-		// // confirmacion de 10 pasos con un interruptor
-		// confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
-		// if (confirm_pase != last_confirm_pase)
-		// {
-		// 	if (confirm_pase == 1)
-		// 	{
-		// 		pase_A = true;
-		// 		counter_pase = 10;
-		// 	}
-		// 	last_confirm_pase = confirm_pase;
-		// }
 
-		if (flag_pase || reset_acum_A || reset_acum_B)
+		for (int i = 0; i < sizeof(acum_pase_A); i++)
 		{
-			flag_pase = false;
-			reset_acum_A = false;
-			reset_acum_B = false;
-			// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
-			// snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
-			// 								 "Giro sentido B: %d\r\n"
-			// 								 "Giro sin autorizacion: %d\r\n"
-			// 								 "Timeout: %d\r\n",
-			// 								  acum_pase_A,
-			// 								  acum_pase_B,
-			// 								  acum_pase_fail,
-			// 								  acum_timeout);
-			// uart_puts(UART1, buffer); // salida formateada
-
-			for (int i = 0; i < sizeof(acum_pase_A); i++) {
-					port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_pase_B); i++) {
-					port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_pase_fail); i++) {
-					port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_timeout); i++) {
-					port_slots_read[TIMEOUT_PASO + i] = acum_timeout >> (i * 8);
-			}
-
-			// if (counter_pase > 1)
-			// {
-			// 	pase = true;
-			// 	counter_pase--;
-			// }
+			port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
+		}
+		for (int i = 0; i < sizeof(acum_pase_B); i++)
+		{
+			port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
+		}
+		for (int i = 0; i < sizeof(acum_pase_fail); i++)
+		{
+			port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
+		}
+		if (timeout_pase)
+		{
+			port_slots_read[TIMEOUT_PASO] = 0xFF;
+		}
+		else
+		{
+			port_slots_read[TIMEOUT_PASO] = 0x00;
 		}
 
 		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
 		// control de paso en proceso de torniquete.
-		if (pase_A && (abs(position_encoder_last) < 50))
-		{
-			pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
-			pio_set(LEFT_PIN_PORT, LEFT_PIN_MASK);
-		}
-		else
-		{
-			pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
-			pio_clear(LEFT_PIN_PORT, LEFT_PIN_MASK);
-			pase_A = false;
+		//
+		// TODO: falta lo lógica de cuando se cumpla el tiempo de timeout
+
+		// CONTROL PASO del toniquete
+		// si hay confimacion de pase em
+		if (one_pulse_pase) {
+			timer_pase = read_tc() - last_time;   // resta unsigned (mód-32 bit)
+		} else {
+			timer_pase = 0;
 		}
 
-		delay_us(100);
+		timer_pase = timer_pase < 30000;
+		if (timer_pase)
+		{
+			acum_timeout++;
+		}
+		
+		control_pase = pase_A && (abs(position_encoder_last) < 50) && (timer_pase);
+		if (control_pase  != one_pulse_pase)
+		{
+			// iterar con los solenoides una sola vez y inicia un temporizador
+			one_pulse_pase = control_pase; 			
+			if (control_pase)
+			{			
+				pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
+				last_time = read_tc();
+			}
+			else
+			{
+				// reiniciar el intervalo de tiempo y el paso de torniquete
+				pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
+				last_time = 0;
+				timer_pase = 0;
+				pase_A = false;
+			}			
+		}
 
 		
+		
+
+		delay_us(100);
 
 	}
 }

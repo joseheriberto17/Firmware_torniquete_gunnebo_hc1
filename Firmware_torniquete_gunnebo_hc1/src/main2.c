@@ -28,6 +28,10 @@
  *   | CONF_A       | PA16           |
  *   | PIC_1        | PA8            |
  *   | PIC_2        | PA7            |
+ * 	 | SW2_1        | PA23           |
+ *   | SW2_2        | PA22           |
+ *   | SW2_3        | PA19           |
+ *   | SW2_4        | PA21           |
  *   +--------------+----------------+
  *
  *
@@ -37,12 +41,13 @@
  */
 #include <asf.h>
 #include <stdio.h>
-#include <stdio_serial.h>
+#include <string.h>
 #include "uart_custom.h"
+#include "Escenarios.h"
 
 void configure_pins(void);
+void configure_uart(void);
 void handle_encoder(const uint32_t id, const uint32_t mask);
-// void configure_uart(void);
 uint8_t read_AB(void);
 
 // definicion de los parametros de la aplicacion
@@ -100,14 +105,13 @@ uint8_t read_AB(void);
 #define PIC_2_PIN_PORT PIOA
 
 // configuracion del UART1 conexion directa a (RS485).
-#define UART_SERIAL_BAUDRATE 19200
-#define UART_SERIAL_BAUDRATE_485 115200 /// para pruebas 19200, para produccion 115200
+#define UART_SERIAL_BAUDRATE_485 19200
 #define UART_SERIAL_CHANNEL_MODE UART_MR_CHMODE_NORMAL
 #define UART_SERIAL_MODE UART_MR_PAR_NO
 
 #define PINS_UART1 (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
 #define PINS_UART1_FLAGS (PIO_PERIPH_A | PIO_DEFAULT)
-#define PINS_UART1_MASK (PIO_PB2 | PIO_PB3)
+#define PINS_UART1_MASK (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
 #define PINS_UART1_PIO PIOB
 #define PINS_UART1_ID ID_PIOB
 #define PINS_UART1_TYPE PIO_PERIPH_A
@@ -125,11 +129,10 @@ uint8_t read_AB(void);
 #define CONFIRMACION_FAIL			0x18
 #define ALARM_STATUS				0x1C
 #define BATTERY_STATUS				0x1D
+#define TIMEOUT_PASO				0x1E
 
 #define PASO_MODE_A			0x10
 #define PASO_MODE_B			0x11
-#define TIMEOUT_PASO		0x12
-
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
 	// to:        00  01  10  11
@@ -140,48 +143,46 @@ const int8_t qdec_table[4][4] = {
 
 // variables globales
 // ------------------------------------------------------------------------
-// conteo de pulsos del encoder
-volatile uint8_t last_state_encoder = 0;	// define la  ultima secuencia de los encoder (A/B).
 // conteo de posicion y direccion del encoder.
 volatile int32_t position_encoder = 0;		// define el micropaso actual del encoder relativo al ultimo final de carrera del torniquete.
 volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo final de carrera del torniquete, durante el proceso de un paso.
-volatile int8_t delta_last = 0;				// direccion del ultima del encoder (valor -1 y +1).
 // validacion de pase en progreso
-volatile bool end_pase = true;				// indica si position_encoder esta en un final de carrera.
-volatile bool invalid_pase = false;			// indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
+volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
+volatile bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
 // confirmacion de un pase
-volatile bool confirm_pase = false;			// confirma si permite un paso del torniquete
-volatile bool last_confirm_pase = false;	// complemento para 
+volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
+volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
-volatile bool pase_A = false;					// control de un pase del torniquete por A
-volatile bool pase_B = false;					// control de un pase del torniquete por B
-volatile bool flag_pase = false;				// incrementador de paso
+volatile bool pase_A = false;	 // control de un pase del torniquete
+volatile bool pase_B = false;
 
 // contador de pase de torniquete
-volatile int16_t counter_pase = 0;		
+volatile int16_t counter_pase = 0;
 volatile int16_t acum_pase_A = 0;		// sentido A
 volatile int16_t acum_pase_B = 0;		// sentido B
 volatile int16_t acum_pase_fail = 0;		// sin autorizacion
 volatile int16_t acum_timeout = 0;		// timeout
 
+volatile bool timeout_pase = false;
+
 
 // comunicacion RS485
-char	bufer_seria_tx[256];
-unsigned char	bufer_serial_rx[256];
-int		port_slots_write[256];
-char	port_slots_read[256];
-int		port_slots_default[256];
-//
-int		data_leng = 256;
-int		dev_id = 0x81;
-int		escenario_temp = 0xFF;
+volatile char	bufer_seria_tx[256];
+volatile unsigned char	bufer_serial_rx[256];
+volatile int		port_slots_write[256];
+volatile char	port_slots_read[256];
+volatile int		port_slots_default[256];
 
-int		port_address = 0;
-int		rx_idx_RS485;
-char	funcion	= 0x20;
-int		char_timeout_RS485 = 20;
-char	error_code = 0x00;
-char	escenario_v = 0x00;
+volatile int		data_leng = 256;
+volatile int		dev_id = 0x81;
+volatile int		escenario_temp = 0xFF;
+
+volatile int		port_address = 0;
+volatile int		rx_idx_RS485;
+volatile char	funcion	= 0x20;
+volatile int		char_timeout_RS485 = 20;
+volatile char	error_code = 0x00;
+volatile char	escenario_v = 0x00;
 
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
@@ -195,39 +196,48 @@ uint8_t read_AB(void)
 // Detecta sentido, cambios y final de carrera.
 void handle_encoder(const uint32_t id, const uint32_t mask)
 {
-	uint8_t new_state_encoder = read_AB(); // lectura de los encoder
+	// conteo de pulsos del encoder
+	static uint8_t last_state_encoder = 0; // define la  ultima secuencia de los encoder (A/B).
+	uint8_t new_state_encoder = read_AB(); // define la secuencia actual de los encoder (A/B).
+
 	// determina si esta en final de carrera.
 	end_pase = pio_get(INDEX_PIN_PORT, PIO_INPUT, INDEX_PIN_MASK) ? 1 : 0;
 
 	// validar el conteo de encoder. (+1,-1,0)
-	int8_t delta = qdec_table[last_state_encoder][new_state_encoder];
+	int8_t new_delta = qdec_table[last_state_encoder][new_state_encoder];
 	last_state_encoder = new_state_encoder;
-	if (delta != 0)
-	{
-		position_encoder += delta; // deteccion de la posicion del encoder
+	static int8_t delta_last = 0;	// direccion del ultima del encoder (valor -1 y +1).
 
-		// Si estamos en el final de carrera
+	if (new_delta != 0)
+	{
+		position_encoder += new_delta; //posicion absoluta del encoder.
+
+		// Si estamos en el final de carrera.
 		if (end_pase)
 		{
-			// si durante el pase en progreso ocurrio una devolucion
+			// si durante el pase en progreso NO ocurrio una devolucion.
 			if (invalid_pase == false)
 			{
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
-					flag_pase = true;
 					acum_pase_B++;
 				}
 				if (position_encoder_last < -COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_2_PIN); // Giro en sentido antihorario.
-					flag_pase = true;
 					acum_pase_A++;
 				}
 			}
+			////////////////////////////////////////////////
+			// TODO: falata la lógica de paso NO AUTORIZADO
+			//
+			// esa lógica debe acumular en los pasos no autorizados
+			//
+			// acum_pase_fail++;
 
 			// Reseteo de variables
-			position_encoder = 0; 
+			position_encoder = 0;
 			position_encoder_last = 0;
 			invalid_pase = false;
 
@@ -237,7 +247,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 		}
 		else
 		{
-			
+
 			// validacion de un pase en procesos
 			// ----------------------------------------------------------------
 			// Almacena la mayor distancia recorrida desde el último final de carrera
@@ -245,7 +255,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			if (abs(position_encoder_last) < abs(position_encoder))
 			{
 				position_encoder_last = position_encoder;
-				delta_last = delta;
+				delta_last = new_delta;
 			}
 			// Si el torniquete se devuelve más allá del límite permitido,
 			// se considera como intento de reversa y se activa la bandera.
@@ -312,8 +322,6 @@ void configure_pins(void)
 void configure_uart(void)
 {
 	pmc_enable_periph_clk(ID_UART1);
-
-	// set the pins to use the uart peripheral
 	pio_configure(PINS_UART1_PIO, PINS_UART1_TYPE, PINS_UART1_MASK, PINS_UART1_ATTR);
 
 	sam_uart_opt_t uart1_settings = {
@@ -322,9 +330,11 @@ void configure_uart(void)
 		.ul_mode = UART_SERIAL_MODE // Modo sin paridad, 8N1
 	};
 
-	uart_init(UART1, &uart1_settings); 
+	uart_init(UART1, &uart1_settings);
+	uart_enable_interrupt(UART1, UART_IER_RXRDY);
 	NVIC_EnableIRQ(UART1_IRQn);
-	uart_enable(UART1);
+
+	delay_us(500);
 }
 
 void	not_ack_RS485()
@@ -346,6 +356,32 @@ void	not_ack_RS485()
 		pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 	}
 }
+
+// void UART1_Handler(void)
+// {
+// 	uint32_t status = uart_get_status(UART1);
+
+// 	// atendemos la interrupcion por uart received.
+// 	if (status & UART_SR_RXRDY)
+// 	{
+// 		char data = 0;
+// 		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
+
+// 		// llenar en el buffer_rx
+// 		buffer_uart1_rx[counter_rx]=data;
+// 		counter_rx++;
+		
+// 		if ((unsigned char)data == 0xFC)
+// 		{
+// 			flag_rx= true;
+// 		}
+// 	}
+
+// 	if (status & UART_SR_OVRE)
+// 	{
+// 		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
+// 	}
+// }
 
 void UART1_Handler()
 {
@@ -462,6 +498,23 @@ void UART1_Handler()
 						{
 							bufer_seria_tx[i] = (char)port_slots_read[port_address];
 							sumatoria_v ^= (char)port_slots_read[port_address++];
+
+							if ((port_address - 1) == ACCUMULATOR_A)
+							{
+								acum_pase_A = 0;
+							}
+							if ((port_address - 1) == ACCUMULATOR_B)
+							{
+								acum_pase_B = 0;
+							}
+							if ((port_address - 1) == CONFIRMACION_FAIL)
+							{
+								acum_pase_fail = 0;
+							}
+							if ((port_address - 1) == TIMEOUT_PASO)
+							{
+								timeout_pase = false;
+							}
 						}
 						
 						bufer_seria_tx[i++] = -(char)sumatoria_v;
@@ -622,71 +675,24 @@ void UART1_Handler()
 		
 	}
 }
-
 int main(void)
 {
 	sysclk_init();				// Inicializa reloj del sistema
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
-	// configure_uart();			// Configura E/S y habilita interrupciones
+	configure_uart();			// Configura E/S y habilita interrupciones
+	delay_init();
 
-	last_state_encoder = read_AB(); // Guarda estado inicial del encoder
+	//last_state_encoder = read_AB(); // Guarda estado inicial del encoder
 
-	// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
+	// Limpia toda pantalla, similar al comando clear
+	// strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
+	// uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
 
-	// char buffer[128]; // buffer del uart
-
-
-	// 	/* Configura UART. */
-	//	#include "asf.h" //uart.h etc. included here
+	// // uint32_t last_time = millis();
 	
-	pmc_enable_periph_clk(ID_UART1);
-	pmc_enable_periph_clk(ID_PIOA);
-	pmc_enable_periph_clk(ID_PIOB);
-	#define UART_SERIAL_BAUDRATE       19200
-	#define UART_SERIAL_BAUDRATE_485       19200 /// para pruebas 19200, para produccion 115200
-	#define UART_SERIAL_CHANNEL_MODE   UART_MR_CHMODE_NORMAL
-	#define UART_SERIAL_MODE         UART_MR_PAR_NO
-
-	/* =============== UART1 =============== */ //(UART0 is defined but not UART1)
-	#define PINS_UART1          (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
-	#define PINS_UART1_FLAGS    (PIO_PERIPH_A | PIO_DEFAULT)
-	#define PINS_UART1_MASK     (PIO_PB2A_URXD1 | PIO_PB3A_UTXD1)
-	#define PINS_UART1_PIO      PIOB
-	#define PINS_UART1_ID       ID_PIOB
-	#define PINS_UART1_TYPE     PIO_PERIPH_A
-	#define PINS_UART1_ATTR     PIO_DEFAULT
-
-	// set the pins to use the uart peripheral
-	pio_configure(PINS_UART1_PIO, PINS_UART1_TYPE, PINS_UART1_MASK, PINS_UART1_ATTR);
-
-	//enable the uart peripherial clock
-	const sam_uart_opt_t uart1_settings =
-	{ sysclk_get_cpu_hz(), UART_SERIAL_BAUDRATE_485, UART_SERIAL_MODE };
-
-	uart_init(UART1,&uart1_settings);      //Init UART1 and enable Rx and Tx
-
-	uart_enable_interrupt(UART1,UART_IER_RXRDY);   //Interrupt reading ready
-	NVIC_EnableIRQ(UART1_IRQn);
-
-	// 	uart_init(UART1, &serial_485_opt_t);
-	uart_enable_tx(UART1);
-	uart_enable_rx(UART1);
-	uart_enable(UART1);   //Enable UART1
-	
-
-	// 	// 	// Configura DMA serial TX
-	Pdc	*serial_485;
-	//	pdc_packet_t serial_485_TX_packet;
-	serial_485 = uart_get_pdc_base(UART1);
-	pdc_enable_transfer(serial_485, PERIPH_PTCR_RXTEN | PERIPH_PTCR_TXTEN);
-
-	// 	// Habilita interrupciones
-	uart_enable_interrupt(UART1, UART_IER_RXRDY);
-	NVIC_EnableIRQ(UART1_IRQn);
-	Enable_global_interrupt();
-
+	// flag_rx = false;
 
 	while (1)
 	{
@@ -711,42 +717,43 @@ int main(void)
 		// 	last_confirm_pase = confirm_pase;
 		// }
 
-		if (flag_pase)
-		{
-			flag_pase = false;
-			// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
-			// snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
-			// 								 "Giro sentido B: %d\r\n"
-			// 								 "Giro sin autorizacion: %d\r\n"
-			// 								 "Timeout: %d\r\n",
-			// 								  acum_pase_A,
-			// 								  acum_pase_B,
-			// 								  acum_pase_fail,
-			// 								  acum_timeout);
-			// uart_puts(UART1, buffer); // salida formateada
+		// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
+		// snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
+		// 								 "Giro sentido B: %d\r\n"
+		// 								 "Giro sin autorizacion: %d\r\n"
+		// 								 "Timeout: %d\r\n",
+		// 								  acum_pase_A,
+		// 								  acum_pase_B,
+		// 								  acum_pase_fail,
+		// 								  acum_timeout);
+		// uart_puts(UART1, buffer); // salida formateada
 
-			for (int i = 0; i < sizeof(acum_pase_A); i++) {
-					port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_pase_B); i++) {
-					port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_pase_fail); i++) {
-					port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
-			}
-			for (int i = 0; i < sizeof(acum_timeout); i++) {
-					port_slots_read[TIMEOUT_PASO + i] = acum_timeout >> (i * 8);
-			}
-
-			// if (counter_pase > 1)
-			// {
-			// 	pase = true;
-			// 	counter_pase--;
-			// }
+		for (int i = 0; i < sizeof(acum_pase_A); i++) {
+				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
 		}
+		for (int i = 0; i < sizeof(acum_pase_B); i++) {
+				port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
+		}
+		for (int i = 0; i < sizeof(acum_pase_fail); i++) {
+				port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
+		}
+		if (timeout_pase) {
+				port_slots_read[TIMEOUT_PASO] = 0xFF;
+		} else {
+				port_slots_read[TIMEOUT_PASO] = 0x00;
+		}
+
+
+		// if (counter_pase > 1)
+		// {
+		// 	pase = true;
+		// 	counter_pase--;
+		// }
 
 		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
 		// control de paso en proceso de torniquete.
+		//
+		// TODO: falta lo lógica de cuando se cumpla el tiempo de timeout
 		if (pase_A && (abs(position_encoder_last) < 50))
 		{
 			pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
@@ -760,7 +767,6 @@ int main(void)
 		}
 
 		delay_us(100);
-
 		
 
 	}

@@ -10,7 +10,6 @@
 #define UART_CUSTOM_H_
 
 void uart_puts(Uart *uart, const char *str, size_t length);
-void uart_gets(Uart *uart, char *str, size_t length);
 
 
 
