@@ -183,6 +183,25 @@ volatile int char_timeout_RS485 = 20;
 volatile char error_code = 0x00;
 volatile char escenario_v = 0x00;
 
+volatile uint32_t ms_ticks = 0;
+
+void configure_systick(void)
+{
+    // SystemCoreClock debe estar correctamente definido como 64000000
+    if (SysTick_Config(SystemCoreClock / 1000)) {
+        // Error al configurar SysTick
+        while (1);
+    }
+}
+void SysTick_Handler(void)
+{
+    ms_ticks++;
+}
+
+uint32_t millis(void)
+{
+    return ms_ticks;
+}
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
 {
@@ -329,13 +348,6 @@ void configure_uart(void)
 	NVIC_EnableIRQ(UART1_IRQn);
 
 	delay_us(500);
-}
-
-void configure_timer()
-{
-	pmc_enable_periph_clk(ID_TC_WAVEFORM);
-	tc_init(TC, TC_CHANNEL_WAVEFORM,TC_CMR_WAVE | TC_CMR_WAVSEL_UP);  // libre-corrido
-	tc_start(TC, TC_CHANNEL_WAVEFORM);
 }
 
 void not_ack_RS485()
@@ -640,6 +652,7 @@ int main(void)
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
+	configure_systick();
 
 	delay_init();
 
@@ -647,6 +660,12 @@ int main(void)
 	bool one_pulse_pase = false;
 	uint32_t timer_pase = 0;
 	uint32_t last_time = 0;
+	bool flag_time_pase = 0;
+	uint32_t value_timeout = 0;
+
+	
+
+	
 
 	while (1)
 	{
@@ -685,39 +704,37 @@ int main(void)
 
 		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
 		// control de paso en proceso de torniquete.
-		//
-		// TODO: falta lo lógica de cuando se cumpla el tiempo de timeout
 
-		// CONTROL PASO del toniquete
-		// si hay confimacion de pase em
+		
+		// recorrido del temporizador cuando se activa control_pase
 		if (one_pulse_pase) {
-			timer_pase = read_tc() - last_time;   // resta unsigned (mód-32 bit)
+			timer_pase = millis() - last_time; 
+			if (timer_pase < value_timeout)
+			{
+				acum_timeout++;
+				flag_time_pase = false;
+			}  
 		} else {
 			timer_pase = 0;
+			flag_time_pase = true;
 		}
 
-		timer_pase = timer_pase < 30000;
-		if (timer_pase)
-		{
-			acum_timeout++;
-		}
-		
-		control_pase = pase_A && (abs(position_encoder_last) < 50) && (timer_pase);
+
+		control_pase = pase_A && (abs(position_encoder_last) < 50) && flag_time_pase;		
 		if (control_pase  != one_pulse_pase)
 		{
-			// iterar con los solenoides una sola vez y inicia un temporizador
+			// iterar con los solenoides una sola vez 
 			one_pulse_pase = control_pase; 			
 			if (control_pase)
 			{			
 				pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
-				last_time = read_tc();
+				last_time = millis();
 			}
 			else
 			{
 				// reiniciar el intervalo de tiempo y el paso de torniquete
 				pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
 				last_time = 0;
-				timer_pase = 0;
 				pase_A = false;
 			}			
 		}
