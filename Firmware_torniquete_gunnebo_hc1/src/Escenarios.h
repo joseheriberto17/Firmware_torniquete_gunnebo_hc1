@@ -8,6 +8,8 @@
 #ifndef ESCENARIOS_H_
 #define ESCENARIOS_H_
 
-uint8_t read_ABCD(void);
+uint32_t esc_read_time(void);
+void SOL_action_A(Pio *p_pio, const uint32_t ul_mask,bool set_SOL);
+void SOL_action_B(Pio *p_pio, const uint32_t ul_mask,bool set_SOL);
 
 #endif /* ESCENARIOS_H_ */

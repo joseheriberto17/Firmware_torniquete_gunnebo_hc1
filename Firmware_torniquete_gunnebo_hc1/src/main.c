@@ -39,6 +39,7 @@
  * Autor: Jose H.
  * Fecha: 13/05/2025
  */
+
 #include <asf.h>
 #include <stdio.h>
 #include <string.h>
@@ -163,7 +164,6 @@ volatile int16_t acum_pase_B = 0;	 // sentido B
 volatile int16_t acum_pase_fail = 0; // sin autorizacion
 volatile int16_t acum_timeout = 0;	 // timeout
 
-volatile bool timeout_pase = false;
 
 // comunicacion RS485
 volatile char bufer_seria_tx[256];
@@ -183,25 +183,29 @@ volatile int char_timeout_RS485 = 20;
 volatile char error_code = 0x00;
 volatile char escenario_v = 0x00;
 
+// manejo de tiempos
 volatile uint32_t ms_ticks = 0;
+volatile bool timeout_pase = false;
 
 void configure_systick(void)
 {
-    // SystemCoreClock debe estar correctamente definido como 64000000
-    if (SysTick_Config(SystemCoreClock / 1000)) {
-        // Error al configurar SysTick
-        while (1);
-    }
+	// SystemCoreClock debe estar correctamente definido como 64000000
+	if (SysTick_Config(SystemCoreClock / 1000))
+	{
+		// Error al configurar SysTick
+		while (1)
+			;
+	}
 }
 void SysTick_Handler(void)
 {
-    ms_ticks++;
+	ms_ticks++;
 }
-
 uint32_t millis(void)
 {
-    return ms_ticks;
+	return ms_ticks;
 }
+
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
 {
@@ -247,6 +251,11 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 					acum_pase_A++;
 				}
 			}
+			else
+			{	
+				// si al llegar a un final de carrera se detecto una devolucion.
+				acum_pase_fail++;
+			}
 
 			// Reseteo de variables
 			position_encoder = 0;
@@ -275,6 +284,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				position_encoder = 0;
 				invalid_pase = true;
+
 			}
 
 			// Control de salidas:
@@ -286,7 +296,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				pio_set(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 				pio_set(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
-				acum_pase_fail++;
+				
 			}
 			else if (delta_last > 0)
 			{
@@ -346,8 +356,6 @@ void configure_uart(void)
 	uart_init(UART1, &uart1_settings);
 	uart_enable_interrupt(UART1, UART_IER_RXRDY);
 	NVIC_EnableIRQ(UART1_IRQn);
-
-	delay_us(500);
 }
 
 void not_ack_RS485()
@@ -645,104 +653,119 @@ void UART1_Handler()
 		}
 	}
 }
+
 int main(void)
 {
-	sysclk_init();				// Inicializa reloj del sistema
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
+	sysclk_init();				// Inicializa reloj del sistema
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
 	configure_systick();
 
-	delay_init();
 
+	// inicializar los solenoide
+	SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK ,0);
+	SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+
+	// control del pase
 	bool control_pase = false;
-	bool one_pulse_pase = false;
+	bool dif_control_pase = false;
+
+	// manejo de tiempos
 	uint32_t timer_pase = 0;
 	uint32_t last_time = 0;
-	bool flag_time_pase = 0;
-	uint32_t value_timeout = 0;
-
-	
-
-	
+	bool flag_timeout_pase = false;
+	uint32_t value_while = millis();
 
 	while (1)
 	{
-
-		if (port_slots_write[PASO_MODE_A] == 0xFF)
+		// el bucle de while se ejecuta cada 10 ms
+		if ((millis() - value_while) > 10)
 		{
-			pase_A = true;
-			port_slots_write[PASO_MODE_A] = 0x00;
-		}
-		else if (port_slots_write[PASO_MODE_B] == 0xFF)
-		{ // no se debe emitar pasos en los dos sentidos
-			pase_B = true;
-			port_slots_write[PASO_MODE_B] = 0x00;
-		}
-
-		for (int i = 0; i < sizeof(acum_pase_A); i++)
-		{
-			port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
-		}
-		for (int i = 0; i < sizeof(acum_pase_B); i++)
-		{
-			port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
-		}
-		for (int i = 0; i < sizeof(acum_pase_fail); i++)
-		{
-			port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
-		}
-		if (timeout_pase)
-		{
-			port_slots_read[TIMEOUT_PASO] = 0xFF;
-		}
-		else
-		{
-			port_slots_read[TIMEOUT_PASO] = 0x00;
-		}
-
-		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
-		// control de paso en proceso de torniquete.
-
-		
-		// recorrido del temporizador cuando se activa control_pase
-		if (one_pulse_pase) {
-			timer_pase = millis() - last_time; 
-			if (timer_pase < value_timeout)
+			if (port_slots_write[PASO_MODE_A] == 0xFF)
 			{
-				acum_timeout++;
-				flag_time_pase = false;
-			}  
-		} else {
-			timer_pase = 0;
-			flag_time_pase = true;
-		}
+				pase_A = true;
+				port_slots_write[PASO_MODE_A] = 0x00;
+			}
+			else if (port_slots_write[PASO_MODE_B] == 0xFF)
+			{ // no se debe emitar pasos en los dos sentidos
+				pase_B = true;
+				port_slots_write[PASO_MODE_B] = 0x00;
+			}
 
 
-		control_pase = pase_A && (abs(position_encoder_last) < 50) && flag_time_pase;		
-		if (control_pase  != one_pulse_pase)
-		{
-			// iterar con los solenoides una sola vez 
-			one_pulse_pase = control_pase; 			
-			if (control_pase)
-			{			
-				pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
-				last_time = millis();
+			for (int i = 0; i < sizeof(acum_pase_A); i++)
+			{
+				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
+			}
+			for (int i = 0; i < sizeof(acum_pase_B); i++)
+			{
+				port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
+			}
+			for (int i = 0; i < sizeof(acum_pase_fail); i++)
+			{
+				port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
+			}
+			if (timeout_pase)
+			{
+				port_slots_read[TIMEOUT_PASO] = 0xFF;
 			}
 			else
 			{
-				// reiniciar el intervalo de tiempo y el paso de torniquete
-				pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK | LEFT_PIN_MASK);
-				last_time = 0;
-				pase_A = false;
-			}			
+				port_slots_read[TIMEOUT_PASO] = 0x00;
+			}
+
+			// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
+			// control de paso en proceso de torniquete.
+
+
+
+
+			// CONTROL PASE DEL TORNIQUETE.
+			// ---------------------------------------------------------------------------------
+			// actualizacion del temporizador cuando se activa control_pase
+			if (dif_control_pase)
+			{
+				timer_pase = millis() - last_time;
+				uint32_t muestra = esc_read_time();
+				if (timer_pase > muestra)
+				{
+					// indicadores de timeout del pase.
+					// acum_timeout++;
+					flag_timeout_pase = true;
+					timeout_pase = true;
+				}
+			}
+			else
+			{
+				timer_pase = 0;
+				flag_timeout_pase = false;
+			}
+			
+			// hay 2 condiciones que regulan el pase por el toniquete cuando pase_A es true.
+			// 	-si el torniquete hace recorrido mas de 85% de la distancia.
+			// 	-si se cumple el timeout.
+			control_pase = pase_A && (abs(position_encoder_last) < 50) && !flag_timeout_pase;
+			if (control_pase != dif_control_pase)
+			{
+				dif_control_pase = control_pase;
+				if (control_pase)
+				{
+					// habilita el intervalo de tiempo posterior y paso del torniquete  una vez.
+					SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK,1);
+					SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,1);
+					last_time = millis();
+				}
+				else
+				{
+					// reiniciar el intervalo de tiempo posterior y el paso de torniquete una vez.
+					SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
+					SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+					last_time = 0;
+					pase_A = false;
+				}
+			}
 		}
-
-		
-		
-
-		delay_us(100);
-
 	}
 }
