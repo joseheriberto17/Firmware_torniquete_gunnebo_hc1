@@ -50,6 +50,9 @@ void configure_pins(void);
 void configure_uart(void);
 void handle_encoder(const uint32_t id, const uint32_t mask);
 uint8_t read_AB(void);
+uint32_t millis(void);
+void configure_systick(void);
+void not_ack_RS485(void);
 
 // definicion de los parametros de la aplicacion
 #define MAX_REVERSE_TOLERANCE 12 // define cuantos contadores puede contar si el torniquete se devuelve
@@ -358,7 +361,7 @@ void configure_uart(void)
 	NVIC_EnableIRQ(UART1_IRQn);
 }
 
-void not_ack_RS485()
+void not_ack_RS485(void)
 {
 	if (bufer_serial_rx[0] != 0x80)
 	{
@@ -368,7 +371,7 @@ void not_ack_RS485()
 		bufer_seria_tx[3] = -(0xA1 ^ 0x15 ^ error_code);
 		bufer_seria_tx[4] = 0xFC;
 
-		uart_puts(UART1, bufer_seria_tx, 5);
+		uart_puts(UART1,(char *)bufer_seria_tx, 5);
 
 		// Pdc	*serial_485;
 		// pdc_packet_t serial_485_TX_packet;
@@ -508,7 +511,7 @@ void UART1_Handler()
 						bufer_seria_tx[i++] = -(char)sumatoria_v;
 						bufer_seria_tx[i] = 0xFC;
 
-						uart_puts(UART1, bufer_seria_tx, (data_leng + 6));
+						uart_puts(UART1, (char *)bufer_seria_tx, (data_leng + 6));
 
 						// Pdc	*serial_485;
 						// pdc_packet_t serial_485_TX_packet;
@@ -570,7 +573,7 @@ void UART1_Handler()
 							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
 							bufer_seria_tx[4] = 0xFC;
 
-							uart_puts(UART1, bufer_seria_tx, 5);
+							uart_puts(UART1, (char *)bufer_seria_tx, 5);
 
 							// Pdc	*serial_485;
 							// pdc_packet_t serial_485_TX_packet;
@@ -628,7 +631,7 @@ void UART1_Handler()
 						bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
 						bufer_seria_tx[4] = 0xFC;
 
-						uart_puts(UART1, bufer_seria_tx, 5);
+						uart_puts(UART1,(char *)bufer_seria_tx, 5);
 
 						// Pdc	*serial_485;
 						// pdc_packet_t serial_485_TX_packet;
@@ -665,8 +668,8 @@ int main(void)
 
 
 	// inicializar los solenoide
-	SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK ,0);
-	SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+	SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK ,0);
+	SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
 
 	// control del pase
 	bool control_pase = false;
@@ -695,15 +698,15 @@ int main(void)
 			}
 
 
-			for (int i = 0; i < sizeof(acum_pase_A); i++)
+			for (size_t  i = 0; i < sizeof(acum_pase_A); i++)
 			{
 				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
 			}
-			for (int i = 0; i < sizeof(acum_pase_B); i++)
+			for (size_t  i = 0; i < sizeof(acum_pase_B); i++)
 			{
 				port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
 			}
-			for (int i = 0; i < sizeof(acum_pase_fail); i++)
+			for (size_t  i = 0; i < sizeof(acum_pase_fail); i++)
 			{
 				port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
 			}
@@ -743,27 +746,51 @@ int main(void)
 				flag_timeout_pase = false;
 			}
 			
-			// hay 2 condiciones que regulan el pase por el toniquete cuando pase_A es true.
-			// 	-si el torniquete hace recorrido mas de 85% de la distancia.
-			// 	-si se cumple el timeout.
-			control_pase = pase_A && (abs(position_encoder_last) < 50) && !flag_timeout_pase;
+			// hay 2 condiciones que regulan el pase por el toniquete cuando el sentido de giro pase_A o pase_B  es true.
+			// 	-si el torniquete hace recorrido mas de 85% de la distancia correspodiente al sentido habilitado.
+			// 	-si se cumple el timeout.			
+			if(pase_A)
+			{
+				control_pase = (position_encoder_last > -50) && !flag_timeout_pase;
+			}
+			if(pase_B)
+			{
+				control_pase = (position_encoder_last < 50) && !flag_timeout_pase;
+			}			
+
+			
 			if (control_pase != dif_control_pase)
 			{
 				dif_control_pase = control_pase;
 				if (control_pase)
 				{
+					
 					// habilita el intervalo de tiempo posterior y paso del torniquete  una vez.
-					SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK,1);
-					SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,1);
+					if (pase_A)
+					{
+						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,1);
+					}
+					if (pase_B)
+					{
+						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,1);
+					}				
 					last_time = millis();
 				}
 				else
 				{
 					// reiniciar el intervalo de tiempo posterior y el paso de torniquete una vez.
-					SOL_action_A(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
-					SOL_action_B(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+					if (pase_A)
+					{
+						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+					}
+					if (pase_B)
+					{
+						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
+					}	
+
 					last_time = 0;
 					pase_A = false;
+					pase_B = false;
 				}
 			}
 		}

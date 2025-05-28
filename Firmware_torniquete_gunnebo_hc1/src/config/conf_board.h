@@ -68,4 +68,10 @@
 #define TC_IRQn     TC2_IRQn
 //! [tc_define_irq_handler]
 
+#define BOARD_FREQ_SLCK_BYPASS    (32768UL)     // típico para cristal de baja frecuencia.
+#define BOARD_FREQ_MAINCK_XTAL    (12000000UL)
+#define BOARD_FREQ_MAINCK_BYPASS  (12000000UL)
+#define BOARD_OSC_STARTUP_US      (15625UL)
+#define BOARD_FREQ_SLCK_XTAL      (32768UL)
+
 #endif /* CONF_BOARD_H_INCLUDED */

@@ -38,8 +38,8 @@ const uint32_t timeout_pase_table[4] = {
 // devuelve el valor de timeout definido por los pines sw_2 segun la tabla
 uint32_t esc_read_time(void)
 {
-	uint8_t TIM_A = pio_get(SW2_3_PIN_PORT, PIO_INPUT, SW2_3_PIN_MASK) ? 1 : 0;
-	uint8_t TIM_B = pio_get(SW2_4_PIN_PORT, PIO_INPUT, SW2_4_PIN_MASK) ? 1 : 0;
+	bool TIM_A = pio_get(SW2_3_PIN_PORT, PIO_INPUT, SW2_3_PIN_MASK) ? 0 : 1;
+	bool TIM_B = pio_get(SW2_4_PIN_PORT, PIO_INPUT, SW2_4_PIN_MASK) ? 0 : 1;
 	uint8_t TIM_status_SW_2 = (TIM_A << 1) | TIM_B;
 
 	return timeout_pase_table[TIM_status_SW_2];
@@ -52,7 +52,7 @@ uint32_t esc_read_time(void)
 // para el  solenoide A.
 void SOL_action_A(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
 {
-	bool get_SOL = pio_get(SW2_2_PIN_PORT, PIO_INPUT, SW2_2_PIN_MASK) ? 0 : 1;
+	bool get_SOL = pio_get(SW2_1_PIN_PORT, PIO_INPUT, SW2_1_PIN_MASK) ? 0 : 1;
 
 	if (get_SOL ^ set_SOL )
 	{
@@ -67,7 +67,7 @@ void SOL_action_A(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
 // para el  solenoide B.
 void SOL_action_B(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
 {
-	bool get_SOL = pio_get(SW2_1_PIN_PORT, PIO_INPUT, SW2_1_PIN_MASK) ? 0 : 1;
+	bool get_SOL = pio_get(SW2_2_PIN_PORT, PIO_INPUT, SW2_2_PIN_MASK) ? 0 : 1;
 
 	if (get_SOL ^ set_SOL )
 	{

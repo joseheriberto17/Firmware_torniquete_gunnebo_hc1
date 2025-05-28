@@ -8,11 +8,11 @@
 #include "uart_custom.h"
 #include <string.h>
 
-void uart_puts(Uart *uart, const char *str, size_t length) {
-
-	for (size_t i = 0; i < length ; i++) {
-		while (!uart_is_tx_ready(uart));
-		uart_write(uart, str[i]);
+void uart_puts(Uart *uart, const char *str, size_t length)
+{
+	for (size_t i = 0; i < length; i++) {
+		while (!uart_is_tx_ready(uart))
+		;
+		uart_write(uart, (uint8_t)str[i]);
 	}
-	memset((void *)str, 0, length);
 }
