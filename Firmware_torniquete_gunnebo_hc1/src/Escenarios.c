@@ -30,7 +30,7 @@
 
 
 const uint32_t timeout_pase_table[4] = {
-										10000, /* millisegundos*/
+										15000, /* millisegundos*/
 	 									20000, /* millisegundos*/
 	 									25000, /* millisegundos*/
 	 									30000};/* millisegundos*/

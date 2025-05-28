@@ -189,6 +189,8 @@ volatile char escenario_v = 0x00;
 // manejo de tiempos
 volatile uint32_t ms_ticks = 0;
 volatile bool timeout_pase = false;
+volatile bool alarm_pase = false;
+
 
 void configure_systick(void)
 {
@@ -458,6 +460,7 @@ void UART1_Handler()
 					not_ack_RS485();
 					char_timeout_RS485 = 0;
 					rx_idx_RS485 = 0;
+					break;
 				}
 
 				sumatoria_v = (unsigned int)bufer_serial_rx[0];
@@ -470,6 +473,8 @@ void UART1_Handler()
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
+					rx_idx_RS485 = 0;
+					break;
 				}
 
 				if ((rx_idx_RS485 == 6) && ((unsigned char)received_byte == 0xFC))
@@ -540,6 +545,8 @@ void UART1_Handler()
 			{
 				error_code = ERROR_OVER;
 				not_ack_RS485();
+				rx_idx_RS485 = 0;
+				break;
 			}
 			else
 			{
@@ -548,6 +555,8 @@ void UART1_Handler()
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
+					rx_idx_RS485 = 0;
+					break;
 				}
 			}
 
@@ -559,11 +568,28 @@ void UART1_Handler()
 					if ((port_address + data_leng) < 0x80)
 					{
 						int port_address_temp = port_address;
+
+						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && !end_pase) {
+							error_code = ERR_BUSY;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && !end_pase) {							
+							error_code = ERR_BUSY;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+
 						for (i = 0; i < data_leng; i++)
 						{
 							port_slots_write[port_address_temp++] = bufer_serial_rx[i + 4];
 						}
 						funcion = 0x20;
+
+						
+
 
 						if (bufer_serial_rx[0] != 0x80)
 						{
@@ -718,6 +744,15 @@ int main(void)
 			{
 				port_slots_read[TIMEOUT_PASO] = 0x00;
 			}
+			if (alarm_pase)
+			{
+				port_slots_read[ALARM_STATUS] = 0xFF;
+			}
+			else
+			{
+				port_slots_read[ALARM_STATUS] = 0x00;
+			}
+			
 
 			// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
 			// control de paso en proceso de torniquete.
