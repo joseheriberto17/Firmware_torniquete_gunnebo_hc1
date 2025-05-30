@@ -132,11 +132,17 @@ void not_ack_RS485(void);
 #define ACCUMULATOR_B 0x14
 #define CONFIRMACION_FAIL 0x18
 #define ALARM_STATUS 0x1C
-#define BATTERY_STATUS 0x1D
+// TODO: si durante un tiempo no se configuro el valor de CONF_ESCENARIO CONF_TIMEOUT
+// Activa la arlam y trabajacon vcon valores por defecto.
+#define CONF_STATUS 0x1D
 #define TIMEOUT_PASO 0x1E
 
 #define PASO_MODE_A 0x10
 #define PASO_MODE_B 0x11
+// hay 4 escenarios  1234 
+#define CONF_ESCENARIO 0x12
+// valor entre (1 - ?) 
+#define CONF_TIMEOUT 0x13
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
 	// to:        00  01  10  11
@@ -177,19 +183,29 @@ volatile int port_slots_default[256];
 
 volatile int data_leng = 256;
 volatile int dev_id = 0x81;
-volatile int escenario_temp = 0xFF;
 
 volatile int port_address = 0;
 volatile int rx_idx_RS485;
 volatile char funcion = 0x20;
 volatile int char_timeout_RS485 = 20;
 volatile char error_code = 0x00;
-volatile char escenario_v = 0x00;
 
 // manejo de tiempos
 volatile uint32_t ms_ticks = 0;
 volatile bool timeout_pase = false;
+volatile uint32_t timeout_alarm_pase = 0;
+// TODO: definir la logica de alarma de torniquete.
 volatile bool alarm_pase = false;
+// flag de configuracion de torniquete.
+volatile bool flag_conf = false;
+
+// Escenario de torniquete desde la aplicacion. 
+// Es probable que se deba usar otra variable para el escenario de torniquete en la configuración fin de la lógica del firmware, 
+// para que no se mezcle con el escenario desde la aplicación.
+volatile int escenario_app = 0;
+
+// timeout de configuracion de torniquete.
+volatile int conf_timeout_pase = 30; // 30 segundos para configurar el torniquete.
 
 
 void configure_systick(void)
@@ -266,7 +282,8 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			position_encoder = 0;
 			position_encoder_last = 0;
 			invalid_pase = false;
-
+			alarm_pase = false;
+			
 			//  Apagamos los LEDs de dirección (SEN_I y SEN_S).
 			pio_clear(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 			pio_clear(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
@@ -282,6 +299,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				position_encoder_last = position_encoder;
 				delta_last = new_delta;
+				timeout_alarm_pase += millis();
 			}
 			// Si el torniquete se devuelve más allá del límite permitido,
 			// se considera como intento de reversa y se activa la bandera.
@@ -441,11 +459,6 @@ void UART1_Handler()
 			data_leng = (int)received_byte;
 		}
 
-		if (rx_idx_RS485 == 5)
-		{
-			escenario_temp = (int)received_byte;
-		}
-
 		int i = 1;
 
 		switch (funcion)
@@ -581,6 +594,20 @@ void UART1_Handler()
 							rx_idx_RS485 = 0;
 							break;
 						}
+						// configuracion de escenarios no permitidos
+						if ((port_address_temp == CONF_ESCENARIO) && ((bufer_serial_rx[4] == 0x00) || (bufer_serial_rx[4] >= 5))) {							
+							error_code = ERR_BAD_DATA;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+						// configuracion de timeout no permitidos
+						if ((port_address_temp == CONF_TIMEOUT) && (bufer_serial_rx[4] < 5)) {							
+							error_code = ERR_BAD_DATA;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
 
 						for (i = 0; i < data_leng; i++)
 						{
@@ -706,12 +733,36 @@ int main(void)
 	uint32_t last_time = 0;
 	bool flag_timeout_pase = false;
 	uint32_t value_while = millis();
+	uint32_t value_init_conf = millis();
 
 	while (1)
 	{
 		// el bucle de while se ejecuta cada 10 ms
 		if ((millis() - value_while) > 10)
 		{
+
+			value_while = millis();
+
+			// Lógica de control de configuración.
+			if ( !flag_conf && ((millis() - value_init_conf) > 5000))
+			{
+				// si no se recibio configuracion de torniquete en 5 segundos, se activa la alarma.
+				if ((escenario_app == 0)) // 0 es el valor de SIN CONFIGURACIÓN de torniquete desde la app (usar valores mayores a 0 para los escenarios)
+				{
+					flag_conf = true; // esta variable se usa para indicar que NO se recibio configuracion de torniquete. no se vuelve a activar la alarma.
+					port_slots_read[CONF_STATUS] = 0xFF; // Alarma de configuracion.
+				}
+			}
+
+			if((millis() - timeout_alarm_pase) > 15000)
+			{
+				alarm_pase =true;
+			}
+
+
+			// Lógica de control del pase del torniquete desde APP.
+			// ---------------------------------------------------------------------------------
+			//
 			if (port_slots_write[PASO_MODE_A] == 0xFF)
 			{
 				pase_A = true;
@@ -722,8 +773,33 @@ int main(void)
 				pase_B = true;
 				port_slots_write[PASO_MODE_B] = 0x00;
 			}
+			// --------------------------------------------------------------------------------
 
 
+			// Lógica de configuración desde APP.
+			// ---------------------------------------------------------------------------------
+			//
+			// TODO: confirmacion de escenario de torniquete.
+			if (port_slots_write[CONF_ESCENARIO] != 0x00) // usar valores de escenario mayores a 0
+			{				
+					escenario_app = port_slots_write[CONF_ESCENARIO]; // es esta varible se almacena el escenario de torniquete.
+					port_slots_write[CONF_ESCENARIO] = 0x00; // normalizar el banco de memoria.
+					port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion, nomalizar.
+			}
+
+			// TODO: configuración de timeout de pase.
+			if (port_slots_write[CONF_TIMEOUT] > 5) // valor mínimo de 5 segundos
+			{
+				conf_timeout_pase = port_slots_write[CONF_TIMEOUT]; // es esta varible se almacena el timeout de pase.
+				port_slots_write[CONF_TIMEOUT] = 0x00; // normalizar el banco de memoria.
+				port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion. normalizar.
+				
+			}
+			// ----------------------------------------------------------------------------------
+
+
+			// Lógica de lectura de datos del torniquete para APP.
+			// ---------------------------------------------------------------------------------
 			for (size_t  i = 0; i < sizeof(acum_pase_A); i++)
 			{
 				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
@@ -744,6 +820,9 @@ int main(void)
 			{
 				port_slots_read[TIMEOUT_PASO] = 0x00;
 			}
+
+			// TODO: alarma para indicar que torniquete está en posición no permitida.
+			// desarollar la logica de alarma de torniquete.
 			if (alarm_pase)
 			{
 				port_slots_read[ALARM_STATUS] = 0xFF;
@@ -752,6 +831,9 @@ int main(void)
 			{
 				port_slots_read[ALARM_STATUS] = 0x00;
 			}
+			// ---------------------------------------------------------------------------------
+
+			
 			
 
 			// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
@@ -827,6 +909,12 @@ int main(void)
 					pase_A = false;
 					pase_B = false;
 				}
+			}
+		} else {
+			// este es el código para tratar el desborde de millis()
+			if (value_while > millis())
+			{
+				value_while = millis();
 			}
 		}
 	}

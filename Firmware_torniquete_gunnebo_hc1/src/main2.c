@@ -39,6 +39,7 @@
  * Autor: Jose H.
  * Fecha: 13/05/2025
  */
+
 #include <asf.h>
 #include <stdio.h>
 #include <string.h>
@@ -49,6 +50,9 @@ void configure_pins(void);
 void configure_uart(void);
 void handle_encoder(const uint32_t id, const uint32_t mask);
 uint8_t read_AB(void);
+uint32_t millis(void);
+void configure_systick(void);
+void not_ack_RS485(void);
 
 // definicion de los parametros de la aplicacion
 #define MAX_REVERSE_TOLERANCE 12 // define cuantos contadores puede contar si el torniquete se devuelve
@@ -117,22 +121,24 @@ uint8_t read_AB(void);
 #define PINS_UART1_TYPE PIO_PERIPH_A
 #define PINS_UART1_ATTR PIO_DEFAULT
 
-#define ERROR_UNDER	0x01	// Faltan datos, timeout
-#define ERROR_OVER	0x02	// Se enviaron mas datos de los esperados antes del caracter 0xFC
-#define ERROR_CHK	0x03	// Error de sumatoria
-#define ERROR_ACS	0x04	// Se intenta escribir una entrada
-#define ERROR_SCN	0x05	// Escenario invalido, < 16 � > 128
+#define ERROR_UNDER 0x01 // Faltan datos, timeout
+#define ERROR_OVER 0x02	 // Se enviaron mas datos de los esperados antes del caracter 0xFC
+#define ERROR_CHK 0x03	 // Error de sumatoria
+#define ERROR_ACS 0x04	 // Se intenta escribir una entrada
+#define ERROR_SCN 0x05	 // Escenario invalido, < 16 � > 128
 
 // definicion de las direcciones de los bancps de memoria
-#define ACCUMULATOR_A               0x10
-#define ACCUMULATOR_B               0x14
-#define CONFIRMACION_FAIL			0x18
-#define ALARM_STATUS				0x1C
-#define BATTERY_STATUS				0x1D
-#define TIMEOUT_PASO				0x1E
+#define ACCUMULATOR_A 0x10
+#define ACCUMULATOR_B 0x14
+#define CONFIRMACION_FAIL 0x18
+#define ALARM_STATUS 0x1C
+#define CONF_STATUS 0x1D
+#define TIMEOUT_PASO 0x1E
 
-#define PASO_MODE_A			0x10
-#define PASO_MODE_B			0x11
+#define PASO_MODE_A 0x10
+#define PASO_MODE_B 0x11
+#define CONF_ESCENARIO 0x12
+#define CONF_TIMEOUT 0x13
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
 	// to:        00  01  10  11
@@ -153,36 +159,70 @@ volatile bool invalid_pase = false; // indica si durante el proceso de un paso e
 volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
 volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
-volatile bool pase_A = false;	 // control de un pase del torniquete
+volatile bool pase_A = false; // control de un pase del torniquete
 volatile bool pase_B = false;
 
 // contador de pase de torniquete
 volatile int16_t counter_pase = 0;
-volatile int16_t acum_pase_A = 0;		// sentido A
-volatile int16_t acum_pase_B = 0;		// sentido B
-volatile int16_t acum_pase_fail = 0;		// sin autorizacion
-volatile int16_t acum_timeout = 0;		// timeout
-
-volatile bool timeout_pase = false;
+volatile int16_t acum_pase_A = 0;	 // sentido A
+volatile int16_t acum_pase_B = 0;	 // sentido B
+volatile int16_t acum_pase_fail = 0; // sin autorizacion
+volatile int16_t acum_timeout = 0;	 // timeout
 
 
 // comunicacion RS485
-volatile char	bufer_seria_tx[256];
-volatile unsigned char	bufer_serial_rx[256];
-volatile int		port_slots_write[256];
-volatile char	port_slots_read[256];
-volatile int		port_slots_default[256];
+volatile char bufer_seria_tx[256];
+volatile unsigned char bufer_serial_rx[256];
+volatile int port_slots_write[256];
+volatile char port_slots_read[256];
+volatile int port_slots_default[256];
 
-volatile int		data_leng = 256;
-volatile int		dev_id = 0x81;
-volatile int		escenario_temp = 0xFF;
+volatile int data_leng = 256;
+volatile int dev_id = 0x81;
 
-volatile int		port_address = 0;
-volatile int		rx_idx_RS485;
-volatile char	funcion	= 0x20;
-volatile int		char_timeout_RS485 = 20;
-volatile char	error_code = 0x00;
-volatile char	escenario_v = 0x00;
+
+volatile int port_address = 0;
+volatile int rx_idx_RS485;
+volatile char funcion = 0x20;
+volatile int char_timeout_RS485 = 20;
+volatile char error_code = 0x00;
+// volatile char escenario_v = 0x00;
+
+// manejo de tiempos
+volatile uint32_t ms_ticks = 0;
+volatile bool timeout_pase = false;
+// TODO: definir la logica de alarma de torniquete.
+volatile bool alarm_pase = false;
+// flag de configuracion de torniquete.
+volatile bool flag_conf = false;
+
+// Escenario de torniquete desde la aplicacion. 
+// Es probable que se deba usar otra variable para el escenario de torniquete en la configuración fin de la lógica del firmware, 
+// para que no se mezcle con el escenario desde la aplicación.
+volatile int escenario_app = 0;
+
+// timeout de configuracion de torniquete.
+volatile int conf_timeout_pase = 30; // 30 segundos para configurar el torniquete.
+
+
+void configure_systick(void)
+{
+	// SystemCoreClock debe estar correctamente definido como 64000000
+	if (SysTick_Config(SystemCoreClock / 1000))
+	{
+		// Error al configurar SysTick
+		while (1)
+			;
+	}
+}
+void SysTick_Handler(void)
+{
+	ms_ticks++;
+}
+uint32_t millis(void)
+{
+	return ms_ticks;
+}
 
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
@@ -206,11 +246,11 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 	// validar el conteo de encoder. (+1,-1,0)
 	int8_t new_delta = qdec_table[last_state_encoder][new_state_encoder];
 	last_state_encoder = new_state_encoder;
-	static int8_t delta_last = 0;	// direccion del ultima del encoder (valor -1 y +1).
+	static int8_t delta_last = 0; // direccion del ultima del encoder (valor -1 y +1).
 
 	if (new_delta != 0)
 	{
-		position_encoder += new_delta; //posicion absoluta del encoder.
+		position_encoder += new_delta; // posicion absoluta del encoder.
 
 		// Si estamos en el final de carrera.
 		if (end_pase)
@@ -229,12 +269,11 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 					acum_pase_A++;
 				}
 			}
-			////////////////////////////////////////////////
-			// TODO: falata la lógica de paso NO AUTORIZADO
-			//
-			// esa lógica debe acumular en los pasos no autorizados
-			//
-			// acum_pase_fail++;
+			else
+			{	
+				// si al llegar a un final de carrera se detecto una devolucion.
+				acum_pase_fail++;
+			}
 
 			// Reseteo de variables
 			position_encoder = 0;
@@ -263,6 +302,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				position_encoder = 0;
 				invalid_pase = true;
+
 			}
 
 			// Control de salidas:
@@ -274,6 +314,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				pio_set(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 				pio_set(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
+				
 			}
 			else if (delta_last > 0)
 			{
@@ -333,11 +374,9 @@ void configure_uart(void)
 	uart_init(UART1, &uart1_settings);
 	uart_enable_interrupt(UART1, UART_IER_RXRDY);
 	NVIC_EnableIRQ(UART1_IRQn);
-
-	delay_us(500);
 }
 
-void	not_ack_RS485()
+void not_ack_RS485(void)
 {
 	if (bufer_serial_rx[0] != 0x80)
 	{
@@ -346,42 +385,18 @@ void	not_ack_RS485()
 		bufer_seria_tx[2] = error_code;
 		bufer_seria_tx[3] = -(0xA1 ^ 0x15 ^ error_code);
 		bufer_seria_tx[4] = 0xFC;
-		
-		Pdc	*serial_485;
-		pdc_packet_t serial_485_TX_packet;
-		serial_485 = uart_get_pdc_base(UART1);
-		pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-		serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-		serial_485_TX_packet.ul_size = 5;
-		pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+
+		uart_puts(UART1,(char *)bufer_seria_tx, 5);
+
+		// Pdc	*serial_485;
+		// pdc_packet_t serial_485_TX_packet;
+		// serial_485 = uart_get_pdc_base(UART1);
+		// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+		// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+		// serial_485_TX_packet.ul_size = 5;
+		// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 	}
 }
-
-// void UART1_Handler(void)
-// {
-// 	uint32_t status = uart_get_status(UART1);
-
-// 	// atendemos la interrupcion por uart received.
-// 	if (status & UART_SR_RXRDY)
-// 	{
-// 		char data = 0;
-// 		uart_read(UART1, (uint8_t *)&data); // lectura de 1 byte.
-
-// 		// llenar en el buffer_rx
-// 		buffer_uart1_rx[counter_rx]=data;
-// 		counter_rx++;
-		
-// 		if ((unsigned char)data == 0xFC)
-// 		{
-// 			flag_rx= true;
-// 		}
-// 	}
-
-// 	if (status & UART_SR_OVRE)
-// 	{
-// 		uart_reset_status(UART1); // Limpiar el error cuando se pierde un byte.
-// 	}
-// }
 
 void UART1_Handler()
 {
@@ -392,16 +407,14 @@ void UART1_Handler()
 	//	unsigned	int	temp_char = 0;
 	uint32_t dw_status = uart_get_status(UART1);
 
-
-
-	if(dw_status & UART_SR_RXRDY)
+	if (dw_status & UART_SR_RXRDY)
 	{
 		uart_read(UART1, &received_byte);
 		//			temp_char = (int)received_byte;
 		//	uart_write(UART1, received_byte);
 
-		bufer_serial_rx[rx_idx_RS485 ++] = (int)received_byte;
-		
+		bufer_serial_rx[rx_idx_RS485++] = (int)received_byte;
+
 		if (rx_idx_RS485 == 0x01)
 		{
 			sumatoria_v = (int)received_byte;
@@ -413,12 +426,11 @@ void UART1_Handler()
 			}
 		}
 
-		
 		if ((rx_idx_RS485 != 0x01) && (rx_idx_RS485 < (data_leng + 4)))
 		{
 			sumatoria_v ^= (int)received_byte;
 		}
-		
+
 		if (rx_idx_RS485 == 0x02)
 		{
 			if (((int)received_byte == 0x10) || ((int)received_byte == 0x1A) || ((int)received_byte == 0x1B))
@@ -431,7 +443,7 @@ void UART1_Handler()
 				funcion = 0x20;
 			}
 		}
-		
+
 		if (rx_idx_RS485 == 3)
 		{
 			port_address = (int)received_byte;
@@ -441,18 +453,17 @@ void UART1_Handler()
 		{
 			data_leng = (int)received_byte;
 		}
-		
-		if (rx_idx_RS485 == 5)
-		{
-			escenario_temp = (int)received_byte;
-		}
-		
-		
-		int	i = 1;
+
+		// if (rx_idx_RS485 == 5)
+		// {
+		// 	escenario_temp = (int)received_byte;
+		// }
+
+		int i = 1;
 
 		switch (funcion)
 		{
-			case 0x10:
+		case 0x10:
 
 			if (bufer_serial_rx[0] != 0x80)
 			{
@@ -462,38 +473,36 @@ void UART1_Handler()
 					not_ack_RS485();
 					char_timeout_RS485 = 0;
 					rx_idx_RS485 = 0;
+					break;
 				}
 
-				
-
-				
 				sumatoria_v = (unsigned int)bufer_serial_rx[0];
-				
+
 				for (i = 1; i < (4); i++)
 				{
 					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 				}
-				if ((rx_idx_RS485 == 0x06) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[4] ))
+				if ((rx_idx_RS485 == 0x06) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[4]))
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
+					rx_idx_RS485 = 0;
+					break;
 				}
-				
+
 				if ((rx_idx_RS485 == 6) && ((unsigned char)received_byte == 0xFC))
 				{
-					
-					
-					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[4] )
+
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[4])
 					{
-						
-						
+
 						sumatoria_v = 0xA1 ^ 0x10 ^ (char)port_address ^ (char)data_leng;
-						
+
 						bufer_seria_tx[0] = 0xA1;
 						bufer_seria_tx[1] = 0x10;
 						bufer_seria_tx[2] = (char)port_address;
 						bufer_seria_tx[3] = (char)data_leng;
-						
+
 						for (i = 4; i < (data_leng + 4); i++)
 						{
 							bufer_seria_tx[i] = (char)port_slots_read[port_address];
@@ -516,67 +525,99 @@ void UART1_Handler()
 								timeout_pase = false;
 							}
 						}
-						
+
 						bufer_seria_tx[i++] = -(char)sumatoria_v;
 						bufer_seria_tx[i] = 0xFC;
-						
-						Pdc	*serial_485;
-						pdc_packet_t serial_485_TX_packet;
-						serial_485 = uart_get_pdc_base(UART1);
-						pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-						serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-						serial_485_TX_packet.ul_size = (data_leng + 6);
-						pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
-						
+
+						uart_puts(UART1, (char *)bufer_seria_tx, (data_leng + 6));
+
+						// Pdc	*serial_485;
+						// pdc_packet_t serial_485_TX_packet;
+						// serial_485 = uart_get_pdc_base(UART1);
+						// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+						// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+						// serial_485_TX_packet.ul_size = (data_leng + 6);
+						// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 					}
 					funcion = 0x20;
 					rx_idx_RS485 = 0;
 				}
-				
-
 			}
-			
+
 			break;
-			
-			
-			
-			//
-			case 0x1A:
+
+		//
+		case 0x1A:
 			sumatoria_v = (unsigned int)bufer_serial_rx[0];
 			for (i = 1; i < (data_leng + 4); i++)
 			{
 				sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 			}
-			
+
 			if ((rx_idx_RS485 == (6 + data_leng)) && ((int)received_byte != 0xFC))
 			{
 				error_code = ERROR_OVER;
 				not_ack_RS485();
+				rx_idx_RS485 = 0;
+				break;
 			}
 			else
 			{
-				if ((rx_idx_RS485 == (0x06 + data_leng)) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[data_leng + 4] ))
+				if ((rx_idx_RS485 == (0x06 + data_leng)) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[data_leng + 4]))
 
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
+					rx_idx_RS485 = 0;
+					break;
 				}
 			}
 
 			if ((rx_idx_RS485 == (6 + data_leng)) && ((unsigned int)received_byte == 0xFC))
 			{
 
-				if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[i] )
+				if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[i])
 				{
 					if ((port_address + data_leng) < 0x80)
 					{
-						int	port_address_temp = port_address;
+						int port_address_temp = port_address;
+
+						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && !end_pase) {
+							error_code = ERR_BUSY;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && !end_pase) {							
+							error_code = ERR_BUSY;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+						// configuracion de escenarios no permitidos
+						if ((port_address_temp == CONF_ESCENARIO) && ((bufer_serial_rx[4] == 0x00) || (bufer_serial_rx[4] >= 5))) {							
+							error_code = ERR_BAD_DATA;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+						// configuracion de timeout no permitidos
+						if ((port_address_temp == CONF_TIMEOUT) && (bufer_serial_rx[4] < 5)) {							
+							error_code = ERR_BAD_DATA;
+							not_ack_RS485();
+							rx_idx_RS485 = 0;
+							break;
+						}
+
 						for (i = 0; i < data_leng; i++)
 						{
 							port_slots_write[port_address_temp++] = bufer_serial_rx[i + 4];
 						}
 						funcion = 0x20;
+
 						
+
+
 						if (bufer_serial_rx[0] != 0x80)
 						{
 							bufer_seria_tx[0] = 0xA1;
@@ -584,14 +625,16 @@ void UART1_Handler()
 							bufer_seria_tx[2] = 0x00;
 							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
 							bufer_seria_tx[4] = 0xFC;
-							
-							Pdc	*serial_485;
-							pdc_packet_t serial_485_TX_packet;
-							serial_485 = uart_get_pdc_base(UART1);
-							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-							serial_485_TX_packet.ul_size = 5;
-							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
+
+							uart_puts(UART1, (char *)bufer_seria_tx, 5);
+
+							// Pdc	*serial_485;
+							// pdc_packet_t serial_485_TX_packet;
+							// serial_485 = uart_get_pdc_base(UART1);
+							// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+							// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+							// serial_485_TX_packet.ul_size = 5;
+							// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 						}
 					}
 					else
@@ -601,10 +644,10 @@ void UART1_Handler()
 					}
 				}
 			}
-			
+
 			break;
 
-			case 0x1B:
+		case 0x1B:
 
 			if (bufer_serial_rx[0] != 0x80)
 			{
@@ -616,55 +659,47 @@ void UART1_Handler()
 					rx_idx_RS485 = 0;
 				}
 
-
 				sumatoria_v = (unsigned int)bufer_serial_rx[0];
-				
+
 				for (i = 1; i < (5); i++)
 				{
 					sumatoria_v ^= (unsigned int)bufer_serial_rx[i];
 				}
-				
-				if ((rx_idx_RS485 == 0x07) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[5] ))
+
+				if ((rx_idx_RS485 == 0x07) && ((-sumatoria_v & 0x000000FF) != (unsigned int)bufer_serial_rx[5]))
 				{
 					error_code = ERROR_CHK;
 					not_ack_RS485();
 				}
-				
+
 				if ((rx_idx_RS485 == 7) && ((unsigned char)received_byte == 0xFC))
 				{
-					
-					
-					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[5] )
-					{
-						
-							bufer_seria_tx[0] = 0xA1;
-							bufer_seria_tx[1] = 0x06;
-							bufer_seria_tx[2] = 0x00;
-							bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
-							bufer_seria_tx[4] = 0xFC;
-							
-							Pdc	*serial_485;
-							pdc_packet_t serial_485_TX_packet;
-							serial_485 = uart_get_pdc_base(UART1);
-							pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
-							serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
-							serial_485_TX_packet.ul_size = 5;
-							pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
-						//}
-						
 
-						
+					if ((-sumatoria_v & 0x000000FF) == (unsigned int)bufer_serial_rx[5])
+					{
+
+						bufer_seria_tx[0] = 0xA1;
+						bufer_seria_tx[1] = 0x06;
+						bufer_seria_tx[2] = 0x00;
+						bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
+						bufer_seria_tx[4] = 0xFC;
+
+						uart_puts(UART1,(char *)bufer_seria_tx, 5);
+
+						// Pdc	*serial_485;
+						// pdc_packet_t serial_485_TX_packet;
+						// serial_485 = uart_get_pdc_base(UART1);
+						// pdc_enable_transfer(serial_485, PERIPH_PTCR_TXTEN);
+						// serial_485_TX_packet.ul_addr = (uint32_t)bufer_seria_tx;
+						// serial_485_TX_packet.ul_size = 5;
+						// pdc_tx_init(serial_485, &serial_485_TX_packet, NULL);
 					}
 					funcion = 0x20;
 					rx_idx_RS485 = 0;
 				}
-				
-
 			}
-			
+
 			break;
-			
-			
 		}
 
 		if (rx_idx_RS485 == (6 + data_leng))
@@ -672,102 +707,210 @@ void UART1_Handler()
 			rx_idx_RS485 = 0;
 			funcion = 0x20;
 		}
-		
 	}
 }
+
 int main(void)
 {
-	sysclk_init();				// Inicializa reloj del sistema
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
+	sysclk_init();				// Inicializa reloj del sistema
 	board_init();				// Inicializa la placa base (ASF)
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
-	delay_init();
+	configure_systick();
 
-	//last_state_encoder = read_AB(); // Guarda estado inicial del encoder
 
-	// Limpia toda pantalla, similar al comando clear
-	// strcpy(buffer_uart1_tx, "\x1B[2J\x1B[H");
-	// uart_puts(UART1, buffer_uart1_tx, strlen(buffer_uart1_tx));
+	// inicializar los solenoide
+	SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK ,0);
+	SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
 
-	// // uint32_t last_time = millis();
-	
-	// flag_rx = false;
+	// control del pase
+	bool control_pase = false;
+	bool dif_control_pase = false;
+
+	// manejo de tiempos
+	uint32_t timer_pase = 0;
+	uint32_t last_time = 0;
+	bool flag_timeout_pase = false;
+	uint32_t value_while = millis();
+	uint32_t value_init_conf = millis();
 
 	while (1)
 	{
+		// el bucle de while se ejecuta cada 10 ms
+		if ((millis() - value_while) > 10)
+		{
 
-		if (port_slots_write[PASO_MODE_A] == 0xFF) {
-			pase_A = true;	
-			port_slots_write[PASO_MODE_A] = 0x00;
-		} else if (port_slots_write[PASO_MODE_B] == 0xFF) {  // no se debe emitar pasos en los dos sentidos
-			pase_B = true;	
-			port_slots_write[PASO_MODE_B] = 0x00;
-		}
-		
-		// // confirmacion de 10 pasos con un interruptor
-		// confirm_pase = pio_get(CONF_A_PIN_PORT, PIO_INPUT, CONF_A_PIN_MASK);
-		// if (confirm_pase != last_confirm_pase)
-		// {
-		// 	if (confirm_pase == 1)
-		// 	{
-		// 		pase_A = true;
-		// 		counter_pase = 10;
-		// 	}
-		// 	last_confirm_pase = confirm_pase;
-		// }
+			value_while = millis();
 
-		// uart_puts(UART1, "\x1B[2J\x1B[H"); // Limpia toda pantalla y va al tope
-		// snprintf(buffer, sizeof(buffer), "Giro sentido A: %d\r\n"
-		// 								 "Giro sentido B: %d\r\n"
-		// 								 "Giro sin autorizacion: %d\r\n"
-		// 								 "Timeout: %d\r\n",
-		// 								  acum_pase_A,
-		// 								  acum_pase_B,
-		// 								  acum_pase_fail,
-		// 								  acum_timeout);
-		// uart_puts(UART1, buffer); // salida formateada
+			// Lógica de control de configuración.
+			if ( !flag_conf && ((millis() - value_init_conf) > 5000))
+			{
+				// si no se recibio configuracion de torniquete en 5 segundos, se activa la alarma.
+				if ((escenario_app == 0)) // 0 es el valor de SIN CONFIGURACIÓN de torniquete desde la app (usar valores mayores a 0 para los escenarios)
+				{
+					flag_conf = true; // esta variable se usa para indicar que NO se recibio configuracion de torniquete. no se vuelve a activar la alarma.
+					port_slots_read[CONF_STATUS] = 0xFF; // Alarma de configuracion.
+				}
+			}
 
-		for (int i = 0; i < sizeof(acum_pase_A); i++) {
+
+			// Lógica de control del pase del torniquete desde APP.
+			// ---------------------------------------------------------------------------------
+			//
+			if (port_slots_write[PASO_MODE_A] == 0xFF)
+			{
+				pase_A = true;
+				port_slots_write[PASO_MODE_A] = 0x00;
+			}
+			else if (port_slots_write[PASO_MODE_B] == 0xFF)
+			{ // no se debe emitar pasos en los dos sentidos
+				pase_B = true;
+				port_slots_write[PASO_MODE_B] = 0x00;
+			}
+			// --------------------------------------------------------------------------------
+
+
+			// Lógica de configuración desde APP.
+			// ---------------------------------------------------------------------------------
+			//
+			// TODO: confirmacion de escenario de torniquete.
+			if (port_slots_write[CONF_ESCENARIO] != 0x00) // usar valores de escenario mayores a 0
+			{				
+					escenario_app = port_slots_write[CONF_ESCENARIO]; // es esta varible se almacena el escenario de torniquete.
+					port_slots_write[CONF_ESCENARIO] = 0x00; // normalizar el banco de memoria.
+					port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion, nomalizar.
+			}
+
+			// TODO: configuración de timeout de pase.
+			if (port_slots_write[CONF_TIMEOUT] > 5) // valor mínimo de 5 segundos
+			{
+				conf_timeout_pase = port_slots_write[CONF_TIMEOUT]; // es esta varible se almacena el timeout de pase.
+				port_slots_write[CONF_TIMEOUT] = 0x00; // normalizar el banco de memoria.
+				port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion. normalizar.
+				
+			}
+			// ----------------------------------------------------------------------------------
+
+
+			// Lógica de lectura de datos del torniquete para APP.
+			// ---------------------------------------------------------------------------------
+			for (size_t  i = 0; i < sizeof(acum_pase_A); i++)
+			{
 				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
-		}
-		for (int i = 0; i < sizeof(acum_pase_B); i++) {
+			}
+			for (size_t  i = 0; i < sizeof(acum_pase_B); i++)
+			{
 				port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
-		}
-		for (int i = 0; i < sizeof(acum_pase_fail); i++) {
+			}
+			for (size_t  i = 0; i < sizeof(acum_pase_fail); i++)
+			{
 				port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
-		}
-		if (timeout_pase) {
+			}
+			if (timeout_pase)
+			{
 				port_slots_read[TIMEOUT_PASO] = 0xFF;
-		} else {
+			}
+			else
+			{
 				port_slots_read[TIMEOUT_PASO] = 0x00;
+			}
+
+			// TODO: alarma para indicar que torniquete está en posición no permitida.
+			// desarollar la logica de alarma de torniquete.
+			if (alarm_pase)
+			{
+				port_slots_read[ALARM_STATUS] = 0xFF;
+			}
+			else
+			{
+				port_slots_read[ALARM_STATUS] = 0x00;
+			}			
+			// ---------------------------------------------------------------------------------
+
+			
+			
+
+			// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
+			// control de paso en proceso de torniquete.
+
+
+
+
+			// CONTROL PASE DEL TORNIQUETE.
+			// ---------------------------------------------------------------------------------
+			// actualizacion del temporizador cuando se activa control_pase
+			if (dif_control_pase)
+			{
+				timer_pase = millis() - last_time;
+				uint32_t muestra = esc_read_time();
+				if (timer_pase > muestra)
+				{
+					// indicadores de timeout del pase.
+					// acum_timeout++;
+					flag_timeout_pase = true;
+					timeout_pase = true;
+				}
+			}
+			else
+			{
+				timer_pase = 0;
+				flag_timeout_pase = false;
+			}
+			
+			// hay 2 condiciones que regulan el pase por el toniquete cuando el sentido de giro pase_A o pase_B  es true.
+			// 	-si el torniquete hace recorrido mas de 85% de la distancia correspodiente al sentido habilitado.
+			// 	-si se cumple el timeout.			
+			if(pase_A)
+			{
+				control_pase = (position_encoder_last > -50) && !flag_timeout_pase;
+			}
+			if(pase_B)
+			{
+				control_pase = (position_encoder_last < 50) && !flag_timeout_pase;
+			}			
+
+			
+			if (control_pase != dif_control_pase)
+			{
+				dif_control_pase = control_pase;
+				if (control_pase)
+				{
+					
+					// habilita el intervalo de tiempo posterior y paso del torniquete  una vez.
+					if (pase_A)
+					{
+						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,1);
+					}
+					if (pase_B)
+					{
+						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,1);
+					}				
+					last_time = millis();
+				}
+				else
+				{
+					// reiniciar el intervalo de tiempo posterior y el paso de torniquete una vez.
+					if (pase_A)
+					{
+						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+					}
+					if (pase_B)
+					{
+						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
+					}	
+
+					last_time = 0;
+					pase_A = false;
+					pase_B = false;
+				}
+			}
+		} else {
+			// este es el código para tratar el desborde de millis()
+			if (value_while > millis())
+			{
+				value_while = millis();
+			}
 		}
-
-
-		// if (counter_pase > 1)
-		// {
-		// 	pase = true;
-		// 	counter_pase--;
-		// }
-
-		// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
-		// control de paso en proceso de torniquete.
-		//
-		// TODO: falta lo lógica de cuando se cumpla el tiempo de timeout
-		if (pase_A && (abs(position_encoder_last) < 50))
-		{
-			pio_set(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
-			pio_set(LEFT_PIN_PORT, LEFT_PIN_MASK);
-		}
-		else
-		{
-			pio_clear(RIGHT_PIN_PORT, RIGHT_PIN_MASK);
-			pio_clear(LEFT_PIN_PORT, LEFT_PIN_MASK);
-			pase_A = false;
-		}
-
-		delay_us(100);
-		
-
 	}
 }
