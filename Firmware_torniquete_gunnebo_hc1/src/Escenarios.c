@@ -27,34 +27,32 @@
 #define SW2_4_PIN_MASK PIO_PA21
 #define SW2_4_PIN_PORT PIOA
 
+// el switche sw_2 define la posicion inicial que esta el escenario,
+// el banco de memoria config_esc define el escenario que quiero que trabaje.
 
+// valor de sw_2:
+// libre = ON;
+// blooqueado = OFF;
+const bool esc_table[4][2] = {
+	// A		 | B
+	/* libre 	 | libre     */	{1,1},
+	/* libre 	 | bloqueado */	{1,0},
+	/* bloqueado | libre	 */	{0,1},
+	/* bloqueado | bloqueado */	{0,0}
+};
 
-const uint32_t timeout_pase_table[4] = {
-										15000, /* millisegundos*/
-	 									20000, /* millisegundos*/
-	 									25000, /* millisegundos*/
-	 									30000};/* millisegundos*/
-
-// devuelve el valor de timeout definido por los pines sw_2 segun la tabla
-uint32_t esc_read_time(void)
-{
-	bool TIM_A = pio_get(SW2_3_PIN_PORT, PIO_INPUT, SW2_3_PIN_MASK) ? 0 : 1;
-	bool TIM_B = pio_get(SW2_4_PIN_PORT, PIO_INPUT, SW2_4_PIN_MASK) ? 0 : 1;
-	uint8_t TIM_status_SW_2 = (TIM_A << 1) | TIM_B;
-
-	return timeout_pase_table[TIM_status_SW_2];
-}
-
-
-// PORALIDAD DE LOS SOLENOIDES
+// CONMUTACION DE LOS SOLENOIDES.
 // -------------------------------------------------------------------------------
-// habilitar y deshabilitar el solenoide deacuerdo a la poralidad definido en sw_2
-// para el  solenoide A.
-void SOL_action_A(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
-{
-	bool get_SOL = pio_get(SW2_1_PIN_PORT, PIO_INPUT, SW2_1_PIN_MASK) ? 0 : 1;
+// habilitar y deshabilitar el solenoide deacuerdo al escenario definido en el banco de memoria
+// y el switche sw_2 para el  solenoide A.
+void esc_action_A(Pio *p_pio, const uint32_t ul_mask,uint8_t esc_app, bool level){
 
-	if (get_SOL ^ set_SOL )
+	bool ESC_A = pio_get(SW2_1_PIN_PORT, PIO_INPUT, SW2_1_PIN_MASK) ? 0 : 1;
+	bool ESC_app_A = esc_table[esc_app][0];
+	bool Poralidad_SOL = ESC_A ^  ESC_app_A; // define la poralidad del solenoide que va a trabajar.
+	
+
+	if (Poralidad_SOL ^ level)
 	{
 		pio_set(p_pio, ul_mask);
 	}
@@ -63,13 +61,16 @@ void SOL_action_A(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
 		pio_clear(p_pio, ul_mask);
 	}
 }
-// habilitar y deshabilitar el solenoide deacuerdo a la poralidad definido en sw_2
-// para el  solenoide B.
-void SOL_action_B(Pio *p_pio, const uint32_t ul_mask,bool set_SOL)
-{
-	bool get_SOL = pio_get(SW2_2_PIN_PORT, PIO_INPUT, SW2_2_PIN_MASK) ? 0 : 1;
 
-	if (get_SOL ^ set_SOL )
+// habilitar y deshabilitar el solenoide deacuerdo al escenario definido en el banco de memoria
+// y el switche sw_2 para el  solenoide B.
+void esc_action_B(Pio *p_pio, const uint32_t ul_mask,uint8_t esc_app, bool level){
+
+	bool ESC_B = pio_get(SW2_2_PIN_PORT, PIO_INPUT, SW2_2_PIN_MASK) ? 0 : 1;
+	bool ESC_app_B = esc_table[esc_app][1];
+	bool Poralidad_SOL = ESC_B ^  ESC_app_B; // define la poralidad del solenoide que va a trabajar.
+
+	if (Poralidad_SOL ^ level)
 	{
 		pio_set(p_pio, ul_mask);
 	}

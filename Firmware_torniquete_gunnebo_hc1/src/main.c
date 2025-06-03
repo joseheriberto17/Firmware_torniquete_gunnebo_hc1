@@ -139,9 +139,9 @@ void not_ack_RS485(void);
 
 #define PASO_MODE_A 0x10
 #define PASO_MODE_B 0x11
-// hay 4 escenarios  1234 
+// hay 4 escenarios  1234
 #define CONF_ESCENARIO 0x12
-// valor entre (1 - ?) 
+// valor entre (1 - ?)
 #define CONF_TIMEOUT 0x13
 // Tabla de transición de cuadratura para decodificador X4.
 const int8_t qdec_table[4][4] = {
@@ -173,7 +173,6 @@ volatile int16_t acum_pase_B = 0;	 // sentido B
 volatile int16_t acum_pase_fail = 0; // sin autorizacion
 volatile int16_t acum_timeout = 0;	 // timeout
 
-
 // comunicacion RS485
 volatile char bufer_seria_tx[256];
 volatile unsigned char bufer_serial_rx[256];
@@ -199,14 +198,13 @@ volatile bool alarm_pase = false;
 // flag de configuracion de torniquete.
 volatile bool flag_conf = false;
 
-// Escenario de torniquete desde la aplicacion. 
-// Es probable que se deba usar otra variable para el escenario de torniquete en la configuración fin de la lógica del firmware, 
+// Escenario de torniquete desde la aplicacion.
+// Es probable que se deba usar otra variable para el escenario de torniquete en la configuración fin de la lógica del firmware,
 // para que no se mezcle con el escenario desde la aplicación.
-volatile int escenario_app = 0;
+volatile int escenario_app = 3;
 
 // timeout de configuracion de torniquete.
-volatile int conf_timeout_pase = 30; // 30 segundos para configurar el torniquete.
-
+volatile int conf_timeout_pase = 10; // 30 segundos para configurar el torniquete.
 
 void configure_systick(void)
 {
@@ -273,7 +271,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 				}
 			}
 			else
-			{	
+			{
 				// si al llegar a un final de carrera se detecto una devolucion.
 				acum_pase_fail++;
 			}
@@ -283,7 +281,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			position_encoder_last = 0;
 			invalid_pase = false;
 			alarm_pase = false;
-			
+
 			//  Apagamos los LEDs de dirección (SEN_I y SEN_S).
 			pio_clear(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 			pio_clear(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
@@ -307,7 +305,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				position_encoder = 0;
 				invalid_pase = true;
-
 			}
 
 			// Control de salidas:
@@ -319,7 +316,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				pio_set(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 				pio_set(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
-				
 			}
 			else if (delta_last > 0)
 			{
@@ -391,7 +387,7 @@ void not_ack_RS485(void)
 		bufer_seria_tx[3] = -(0xA1 ^ 0x15 ^ error_code);
 		bufer_seria_tx[4] = 0xFC;
 
-		uart_puts(UART1,(char *)bufer_seria_tx, 5);
+		uart_puts(UART1, (char *)bufer_seria_tx, 5);
 
 		// Pdc	*serial_485;
 		// pdc_packet_t serial_485_TX_packet;
@@ -582,27 +578,31 @@ void UART1_Handler()
 					{
 						int port_address_temp = port_address;
 
-						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && !end_pase) {
+						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && !end_pase)
+						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
 							break;
 						}
-						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && !end_pase) {							
+						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && !end_pase)
+						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
 							break;
 						}
 						// configuracion de escenarios no permitidos
-						if ((port_address_temp == CONF_ESCENARIO) && ((bufer_serial_rx[4] == 0x00) || (bufer_serial_rx[4] >= 5))) {							
+						if ((port_address_temp == CONF_ESCENARIO) && ((bufer_serial_rx[4] == 0x00) || (bufer_serial_rx[4] >= 5)))
+						{
 							error_code = ERR_BAD_DATA;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
 							break;
 						}
 						// configuracion de timeout no permitidos
-						if ((port_address_temp == CONF_TIMEOUT) && (bufer_serial_rx[4] < 5)) {							
+						if ((port_address_temp == CONF_TIMEOUT) && (bufer_serial_rx[4] < 5))
+						{
 							error_code = ERR_BAD_DATA;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
@@ -614,9 +614,6 @@ void UART1_Handler()
 							port_slots_write[port_address_temp++] = bufer_serial_rx[i + 4];
 						}
 						funcion = 0x20;
-
-						
-
 
 						if (bufer_serial_rx[0] != 0x80)
 						{
@@ -684,7 +681,7 @@ void UART1_Handler()
 						bufer_seria_tx[3] = -((char)(0xA1 ^ 0x06 ^ 0x00));
 						bufer_seria_tx[4] = 0xFC;
 
-						uart_puts(UART1,(char *)bufer_seria_tx, 5);
+						uart_puts(UART1, (char *)bufer_seria_tx, 5);
 
 						// Pdc	*serial_485;
 						// pdc_packet_t serial_485_TX_packet;
@@ -719,17 +716,15 @@ int main(void)
 	configure_uart();			// Configura E/S y habilita interrupciones
 	configure_systick();
 
-
 	// inicializar los solenoide
-	SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK ,0);
-	SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
+	esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 0);
+	esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 0);
 
 	// control del pase
 	bool control_pase = false;
 	bool dif_control_pase = false;
 
 	// manejo de tiempos
-	uint32_t timer_pase = 0;
 	uint32_t last_time = 0;
 	bool flag_timeout_pase = false;
 	uint32_t value_while = millis();
@@ -744,25 +739,20 @@ int main(void)
 			value_while = millis();
 
 			// Lógica de control de configuración.
-			if ( !flag_conf && ((millis() - value_init_conf) > 5000))
+			if (!flag_conf && ((millis() - value_init_conf) > 5000))
 			{
 				// si no se recibio configuracion de torniquete en 5 segundos, se activa la alarma.
-				if ((escenario_app == 0)) // 0 es el valor de SIN CONFIGURACIÓN de torniquete desde la app (usar valores mayores a 0 para los escenarios)
-				{
-					flag_conf = true; // esta variable se usa para indicar que NO se recibio configuracion de torniquete. no se vuelve a activar la alarma.
-					port_slots_read[CONF_STATUS] = 0xFF; // Alarma de configuracion.
-				}
+				flag_conf = true;					 // esta variable se usa para indicar que NO se recibio configuracion de torniquete. no se vuelve a activar la alarma.
+				port_slots_read[CONF_STATUS] = 0xFF; // Alarma de configuracion.
 			}
 
-			if((millis() - timeout_alarm_pase) > 15000)
-			{
-				alarm_pase =true;
-			}
-
+			// if((millis() - timeout_alarm_pase) > 15000)
+			// {
+			// 	alarm_pase =true;
+			// }
 
 			// Lógica de control del pase del torniquete desde APP.
 			// ---------------------------------------------------------------------------------
-			//
 			if (port_slots_write[PASO_MODE_A] == 0xFF)
 			{
 				pase_A = true;
@@ -775,40 +765,37 @@ int main(void)
 			}
 			// --------------------------------------------------------------------------------
 
-
 			// Lógica de configuración desde APP.
 			// ---------------------------------------------------------------------------------
 			//
 			// TODO: confirmacion de escenario de torniquete.
 			if (port_slots_write[CONF_ESCENARIO] != 0x00) // usar valores de escenario mayores a 0
-			{				
-					escenario_app = port_slots_write[CONF_ESCENARIO]; // es esta varible se almacena el escenario de torniquete.
-					port_slots_write[CONF_ESCENARIO] = 0x00; // normalizar el banco de memoria.
-					port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion, nomalizar.
+			{
+				escenario_app = port_slots_write[CONF_ESCENARIO]; // es esta varible se almacena el escenario de torniquete.
+				port_slots_write[CONF_ESCENARIO] = 0x00;		  // normalizar el banco de memoria.
+				port_slots_read[CONF_STATUS] = 0x00;			  // Alarma de configuracion, nomalizar.
 			}
 
 			// TODO: configuración de timeout de pase.
 			if (port_slots_write[CONF_TIMEOUT] > 5) // valor mínimo de 5 segundos
 			{
 				conf_timeout_pase = port_slots_write[CONF_TIMEOUT]; // es esta varible se almacena el timeout de pase.
-				port_slots_write[CONF_TIMEOUT] = 0x00; // normalizar el banco de memoria.
-				port_slots_read[CONF_STATUS] = 0x00; // Alarma de configuracion. normalizar.
-				
+				port_slots_write[CONF_TIMEOUT] = 0x00;				// normalizar el banco de memoria.
+				port_slots_read[CONF_STATUS] = 0x00;				// Alarma de configuracion. normalizar.
 			}
 			// ----------------------------------------------------------------------------------
 
-
 			// Lógica de lectura de datos del torniquete para APP.
 			// ---------------------------------------------------------------------------------
-			for (size_t  i = 0; i < sizeof(acum_pase_A); i++)
+			for (size_t i = 0; i < sizeof(acum_pase_A); i++)
 			{
 				port_slots_read[ACCUMULATOR_A + i] = acum_pase_A >> (i * 8);
 			}
-			for (size_t  i = 0; i < sizeof(acum_pase_B); i++)
+			for (size_t i = 0; i < sizeof(acum_pase_B); i++)
 			{
 				port_slots_read[ACCUMULATOR_B + i] = acum_pase_B >> (i * 8);
 			}
-			for (size_t  i = 0; i < sizeof(acum_pase_fail); i++)
+			for (size_t i = 0; i < sizeof(acum_pase_fail); i++)
 			{
 				port_slots_read[CONFIRMACION_FAIL + i] = acum_pase_fail >> (i * 8);
 			}
@@ -832,65 +819,58 @@ int main(void)
 				port_slots_read[ALARM_STATUS] = 0x00;
 			}
 			// ---------------------------------------------------------------------------------
-
-			
-			
-
-			// TODO: esta lógica parace solo aplicar para el paso por A, fatal paso por B.
-			// control de paso en proceso de torniquete.
-
-
-
-
 			// CONTROL PASE DEL TORNIQUETE.
 			// ---------------------------------------------------------------------------------
 			// actualizacion del temporizador cuando se activa control_pase
 			if (dif_control_pase)
 			{
-				timer_pase = millis() - last_time;
-				uint32_t muestra = esc_read_time();
-				if (timer_pase > muestra)
+				if (millis() - last_time > conf_timeout_pase * 1000)
 				{
-					// indicadores de timeout del pase.
-					// acum_timeout++;
+					// activar la alarma y pones en modo falso la condicion de control_pase.
 					flag_timeout_pase = true;
 					timeout_pase = true;
+				}
+				else
+				{
+					//  tratar el desbordamiento
+					if (last_time > millis())
+					{
+						last_time = millis();
+					}
 				}
 			}
 			else
 			{
-				timer_pase = 0;
 				flag_timeout_pase = false;
 			}
-			
+
 			// hay 2 condiciones que regulan el pase por el toniquete cuando el sentido de giro pase_A o pase_B  es true.
 			// 	-si el torniquete hace recorrido mas de 85% de la distancia correspodiente al sentido habilitado.
-			// 	-si se cumple el timeout.			
-			if(pase_A)
+			// 	-si se cumple el timeout.
+			if (pase_A)
 			{
 				control_pase = (position_encoder_last > -50) && !flag_timeout_pase;
 			}
-			if(pase_B)
+			if (pase_B)
 			{
 				control_pase = (position_encoder_last < 50) && !flag_timeout_pase;
-			}			
+			}
 
-			
 			if (control_pase != dif_control_pase)
 			{
 				dif_control_pase = control_pase;
 				if (control_pase)
 				{
-					
+
 					// habilita el intervalo de tiempo posterior y paso del torniquete  una vez.
 					if (pase_A)
 					{
-						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,1);
+						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 1);
 					}
 					if (pase_B)
 					{
-						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,1);
-					}				
+						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 1);
+					}
 					last_time = millis();
 				}
 				else
@@ -898,19 +878,21 @@ int main(void)
 					// reiniciar el intervalo de tiempo posterior y el paso de torniquete una vez.
 					if (pase_A)
 					{
-						SOL_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK,0);
+						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 0);
 					}
 					if (pase_B)
 					{
-						SOL_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK,0);
-					}	
+						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 0);
+					}
 
 					last_time = 0;
 					pase_A = false;
 					pase_B = false;
 				}
 			}
-		} else {
+		}
+		else
+		{
 			// este es el código para tratar el desborde de millis()
 			if (value_while > millis())
 			{
