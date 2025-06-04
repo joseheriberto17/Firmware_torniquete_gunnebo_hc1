@@ -159,9 +159,6 @@ volatile int32_t position_encoder_last = 0; // define el micropaso maximo del en
 // validacion de pase en progreso
 volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
 volatile bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
-// confirmacion de un pase
-volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
-volatile bool last_confirm_pase = false; // complemento para
 // gestion de un pase del torniquete
 volatile bool pase_A = false; // control de un pase del torniquete
 volatile bool pase_B = false;
@@ -195,16 +192,12 @@ volatile bool timeout_pase = false;
 volatile uint32_t timeout_alarm_pase = 0;
 // TODO: definir la logica de alarma de torniquete.
 volatile bool alarm_pase = false;
-// flag de configuracion de torniquete.
-volatile bool flag_conf = false;
 
-// Escenario de torniquete desde la aplicacion.
-// Es probable que se deba usar otra variable para el escenario de torniquete en la configuración fin de la lógica del firmware,
-// para que no se mezcle con el escenario desde la aplicación.
-volatile int escenario_app = 3;
+volatile uint8_t escenario_app = 0;
+volatile uint8_t dif_escenario_app = 0;
 
 // timeout de configuracion de torniquete.
-volatile int conf_timeout_pase = 10; // 30 segundos para configurar el torniquete.
+volatile uint16_t conf_timeout_pase = 0;
 
 void configure_systick(void)
 {
@@ -259,21 +252,26 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			// si durante el pase en progreso NO ocurrio una devolucion.
 			if (invalid_pase == false)
 			{
-				if (position_encoder_last > COUNTER_ENCODER_PASE)
-				{
-					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
-					acum_pase_B++;
-				}
 				if (position_encoder_last < -COUNTER_ENCODER_PASE)
 				{
 					pio_toggle_pin(PIC_2_PIN); // Giro en sentido antihorario.
 					acum_pase_A++;
+					if ((escenario_app == 3) || (escenario_app == 4))
+					{
+						acum_pase_fail++;
+					}
 				}
-			}
-			else
-			{
-				// si al llegar a un final de carrera se detecto una devolucion.
-				acum_pase_fail++;
+				if (position_encoder_last > COUNTER_ENCODER_PASE)
+				{
+					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
+					acum_pase_B++;
+					if ((escenario_app == 2) || (escenario_app == 4))
+					{
+						acum_pase_fail++;
+					}
+					
+					
+				}
 			}
 
 			// Reseteo de variables
@@ -716,10 +714,6 @@ int main(void)
 	configure_uart();			// Configura E/S y habilita interrupciones
 	configure_systick();
 
-	// inicializar los solenoide
-	esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 0);
-	esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 0);
-
 	// control del pase
 	bool control_pase = false;
 	bool dif_control_pase = false;
@@ -730,6 +724,11 @@ int main(void)
 	uint32_t value_while = millis();
 	uint32_t value_init_conf = millis();
 
+	// inicializar los solenoide
+	esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app, 0);
+	esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app, 0);
+
+
 	while (1)
 	{
 		// el bucle de while se ejecuta cada 10 ms
@@ -739,12 +738,22 @@ int main(void)
 			value_while = millis();
 
 			// Lógica de control de configuración.
-			if (!flag_conf && ((millis() - value_init_conf) > 5000))
+			if ((escenario_app == 0 || conf_timeout_pase == 0) && ((millis() - value_init_conf) > 5000))
 			{
 				// si no se recibio configuracion de torniquete en 5 segundos, se activa la alarma.
-				flag_conf = true;					 // esta variable se usa para indicar que NO se recibio configuracion de torniquete. no se vuelve a activar la alarma.
 				port_slots_read[CONF_STATUS] = 0xFF; // Alarma de configuracion.
+				conf_timeout_pase = 30;
 			}
+
+			// cada vez que cambie escenario_app actualiza los solenoides.
+			if (escenario_app != dif_escenario_app)
+			{
+				dif_escenario_app = escenario_app;
+
+				esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app, 0);
+				esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app, 0);
+			}
+			
 
 			// if((millis() - timeout_alarm_pase) > 15000)
 			// {
@@ -830,14 +839,6 @@ int main(void)
 					flag_timeout_pase = true;
 					timeout_pase = true;
 				}
-				else
-				{
-					//  tratar el desbordamiento
-					if (last_time > millis())
-					{
-						last_time = millis();
-					}
-				}
 			}
 			else
 			{
@@ -865,11 +866,11 @@ int main(void)
 					// habilita el intervalo de tiempo posterior y paso del torniquete  una vez.
 					if (pase_A)
 					{
-						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 1);
+						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app, 1);
 					}
 					if (pase_B)
 					{
-						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 1);
+						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app, 1);
 					}
 					last_time = millis();
 				}
@@ -878,25 +879,17 @@ int main(void)
 					// reiniciar el intervalo de tiempo posterior y el paso de torniquete una vez.
 					if (pase_A)
 					{
-						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app - 1, 0);
+						esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app, 0);
 					}
 					if (pase_B)
 					{
-						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app - 1, 0);
+						esc_action_B(RIGHT_PIN_PORT, RIGHT_PIN_MASK, escenario_app, 0);
 					}
 
 					last_time = 0;
 					pase_A = false;
 					pase_B = false;
 				}
-			}
-		}
-		else
-		{
-			// este es el código para tratar el desborde de millis()
-			if (value_while > millis())
-			{
-				value_while = millis();
 			}
 		}
 	}
