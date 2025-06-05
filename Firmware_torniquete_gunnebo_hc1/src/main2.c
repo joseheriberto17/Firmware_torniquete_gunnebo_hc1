@@ -154,7 +154,7 @@ volatile int32_t position_encoder = 0;		// define el micropaso actual del encode
 volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo final de carrera del torniquete, durante el proceso de un paso.
 // validacion de pase en progreso
 volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
-volatile bool invalid_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
+volatile bool reversa_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
 // confirmacion de un pase
 volatile bool confirm_pase = false;		 // confirma si permite un paso del torniquete
 volatile bool last_confirm_pase = false; // complemento para
@@ -256,7 +256,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 		if (end_pase)
 		{
 			// si durante el pase en progreso NO ocurrio una devolucion.
-			if (invalid_pase == false)
+			if (reversa_pase == false)
 			{
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
 				{
@@ -278,7 +278,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			// Reseteo de variables
 			position_encoder = 0;
 			position_encoder_last = 0;
-			invalid_pase = false;
+			reversa_pase = false;
 
 			//  Apagamos los LEDs de dirección (SEN_I y SEN_S).
 			pio_clear(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
@@ -301,16 +301,16 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			if (abs(position_encoder_last - position_encoder) > MAX_REVERSE_TOLERANCE)
 			{
 				position_encoder = 0;
-				invalid_pase = true;
+				reversa_pase = true;
 
 			}
 
 			// Control de salidas:
 			// ------------------------------------------------------------------------------
-			// - Si hubo reversa: ambos LEDs encendidos (advertencia invalid_pase = true).
+			// - Si hubo reversa: ambos LEDs encendidos (advertencia reversa_pase = true).
 			// - Si avanza en sentido horario: LED SEN_I.
 			// - Si avanza en sentido antihorario: LED SEN_S.
-			if (invalid_pase)
+			if (reversa_pase)
 			{
 				pio_set(LED_SEN_I_PIN_PORT, LED_SEN_I_PIN_MASK);
 				pio_set(LED_SEN_S_PIN_PORT, LED_SEN_S_PIN_MASK);
