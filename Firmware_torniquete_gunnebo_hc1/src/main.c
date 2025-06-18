@@ -59,9 +59,9 @@ void not_ack_RS485(void);
 #define MAX_REVERSE_TOLERANCE 12 // cuantos contadores puede contar si el torniquete se devuelve
 #define COUNTER_ENCODER_PASE 60	 // valor que tiene que contar position_encoder para validar un paso.
 #define COUNTER_ENCODER_PASE_85P 50 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado.
-#define VALUE_TIMER_ALARM_PASE 40000  // Tiempo máximo (ms) fuera de final de carrera antes de alarma.
+#define VALUE_TIMER_ALARM_PASE 40000  // Tiempo máximo (ms) fuera de posicion de inicio antes de alarma.
 #define VALUE_TIMEOUT_PASE 30 // valor que define por cuanto tiempo el sentido autorizado esta habilitado.
-#define COUNTER_ENCODER_PICTO 12 // número de pasos permitidos fuera del final de carrera, para reducir el rebote por parte de los pictogramas.
+#define COUNTER_ENCODER_PICTO 12 // número de pasos permitidos fuera del posicion de inicio, para reducir el rebote por parte de los pictogramas.
 
 // Pin de entrada de encoder por SEN_I.
 #define SEN_I_PIN PIO_PB13_IDX
@@ -149,11 +149,11 @@ const int8_t qdec_table[4][4] = {
 // variables globales
 // ------------------------------------------------------------------------
 // conteo de posicion y direccion del encoder.
-volatile int32_t position_encoder = 0;		// define el micropaso actual del encoder relativo al ultimo final de carrera del torniquete.
-volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo final de carrera del torniquete, durante el proceso de un paso.
+volatile int32_t position_encoder = 0;		// define el micropaso actual del encoder relativo al ultimo posicion de inicio del torniquete.
+volatile int32_t position_encoder_last = 0; // define el micropaso maximo del encoder relativo la ultimo posicion de inicio del torniquete, durante el proceso de un paso.
 volatile bool position_encoder_moved = 0;
 // validacion de pase en progreso
-volatile bool end_pase = true;		// indica si position_encoder esta en un final de carrera.
+volatile bool end_pase = true;		// indica si position_encoder esta en un posicion de inicio.
 volatile bool reversa_pase = false; // indica si durante el proceso de un paso el torniquete se devolvio superando el valor de tolerancia (MAX_REVERSE_TOLERANCE).
 // gestion de un pase del torniquete
 volatile bool pase_A = false;
@@ -225,7 +225,7 @@ uint8_t read_AB(void)
 }
 
 // funcion handler para la interrupcion para la logica del encoder (A/B)
-// Detecta sentido, cambios y final de carrera.
+// Detecta sentido, cambios y posicion de inicio.
 void handle_encoder(const uint32_t id, const uint32_t mask)
 {
 	uint8_t escenario = 0;
@@ -234,7 +234,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 	static uint8_t last_state_encoder = 0; // define la  ultima secuencia de los encoder (A/B).
 	uint8_t new_state_encoder = read_AB(); // define la secuencia actual de los encoder (A/B).
 
-	// determina si esta en final de carrera.
+	// determina si esta una posicion de inicio.
 	end_pase = pio_get(INDEX_PIN_PORT, PIO_INPUT, INDEX_PIN_MASK) ? 1 : 0;
 
 	// validar el conteo de encoder. (+1,-1,0)
@@ -246,7 +246,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 	{
 		position_encoder += new_delta; // posicion absoluta del encoder.
 
-		// Si estamos en el final de carrera.
 		if (end_pase)
 		{
 			// si durante el pase en progreso NO ocurrio una devolucion.
@@ -311,7 +310,7 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 
 			// validacion de un pase en procesos
 			// ----------------------------------------------------------------
-			// Almacena la mayor distancia recorrida desde el último final de carrera
+			// Almacena la mayor distancia recorrida desde el último posicion de inicio
 			// y la ultima dirección (signo) de ese desplazamiento.
 			if (abs(position_encoder_last) < abs(position_encoder))
 			{
@@ -800,7 +799,7 @@ int main(void)
 				position_encoder_moved = false;
 				alarm_pase = false;
 
-				// reestablecer los pictos como estaban los escenario cuando vuelve a un final de carrera.
+				// reestablecer los pictos como estaban los escenario cuando vuelve a un posicion de inicio.
 				picto_action(A,ESC_target(0,escenario_app)^pase_A);
 				picto_action(B,ESC_target(1,escenario_app)^pase_B);
 			}
