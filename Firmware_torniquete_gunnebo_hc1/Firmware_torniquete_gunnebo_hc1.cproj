@@ -528,6 +528,12 @@
     <Compile Include="src\Escenarios.h">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="src\Pictogramas.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\Pictogramas.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="src\uart_custom.h">
       <SubType>compile</SubType>
     </Compile>

@@ -45,6 +45,7 @@
 #include <string.h>
 #include "uart_custom.h"
 #include "Escenarios.h"
+#include "Pictogramas.h"
 
 void configure_pins(void);
 void configure_uart(void);
@@ -100,16 +101,6 @@ void not_ack_RS485(void);
 #define LED_SEN_S_PIN PIO_PB0_IDX
 #define LED_SEN_S_PIN_MASK PIO_PB0
 #define LED_SEN_S_PIN_PORT PIOB
-
-// Pin de salida del led PICT_1.
-#define PIC_1_PIN PIO_PA8_IDX
-#define PIC_1_PIN_MASK PIO_PA8
-#define PIC_1_PIN_PORT PIOA
-
-// Pin de salida del led PICT_2.
-#define PIC_2_PIN PIO_PA7_IDX
-#define PIC_2_PIN_MASK PIO_PA7
-#define PIC_2_PIN_PORT PIOA
 
 // configuracion del UART1 conexion directa a (RS485).
 #define UART_SERIAL_BAUDRATE_485 19200
@@ -227,9 +218,9 @@ uint32_t millis(void)
 // obtiene los estados de los pines asignado para la lectura del encoder, devueve en un nibble la secuencia del estado de encoder.
 uint8_t read_AB(void)
 {
-	uint8_t A = pio_get(SEN_I_PIN_PORT, PIO_INPUT, SEN_I_PIN_MASK) ? 1 : 0;
-	uint8_t B = pio_get(SEN_S_PIN_PORT, PIO_INPUT, SEN_S_PIN_MASK) ? 1 : 0;
-	return (A << 1) | B;
+	uint8_t encoder_A = pio_get(SEN_I_PIN_PORT, PIO_INPUT, SEN_I_PIN_MASK) ? 1 : 0;
+	uint8_t encoder_B = pio_get(SEN_S_PIN_PORT, PIO_INPUT, SEN_S_PIN_MASK) ? 1 : 0;
+	return (encoder_A << 1) | encoder_B;
 }
 
 // funcion handler para la interrupcion para la logica del encoder (A/B)
@@ -262,7 +253,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			{
 				if (position_encoder_last < -COUNTER_ENCODER_PASE)
 				{
-					pio_toggle_pin(PIC_2_PIN); // Giro en sentido antihorario.
 					acum_pase_A++;
 
 					// confirmacion de pase no autorizado
@@ -284,7 +274,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 				}
 				if (position_encoder_last > COUNTER_ENCODER_PASE)
 				{
-					pio_toggle_pin(PIC_1_PIN); // Giro en sentido horario.
 					acum_pase_B++;
 
 					// confirmacion de pase no autorizado
@@ -371,8 +360,6 @@ void configure_pins(void)
 	// Salidas GPIO
 	pio_configure(LED_SEN_I_PIN_PORT, PIO_OUTPUT_0, LED_SEN_I_PIN_MASK, PIO_DEFAULT);
 	pio_configure(LED_SEN_S_PIN_PORT, PIO_OUTPUT_0, LED_SEN_S_PIN_MASK, PIO_DEFAULT);
-	pio_configure(PIC_1_PIN_PORT, PIO_OUTPUT_0, PIC_1_PIN_MASK, PIO_DEFAULT);
-	pio_configure(PIC_2_PIN_PORT, PIO_OUTPUT_0, PIC_2_PIN_MASK, PIO_DEFAULT);
 	pio_configure(RIGHT_PIN_PORT, PIO_OUTPUT_0, RIGHT_PIN_MASK, PIO_DEFAULT);
 	pio_configure(LEFT_PIN_PORT, PIO_OUTPUT_0, LEFT_PIN_MASK, PIO_DEFAULT);
 
@@ -742,9 +729,13 @@ int main(void)
 	WDT->WDT_MR = WDT_MR_WDDIS; // Desactiva watchdog
 	sysclk_init();				// Inicializa reloj del sistema
 	board_init();				// Inicializa la placa base (ASF)
+
+	esc_init();
+	picto_init();
 	configure_pins();			// Configura E/S y habilita interrupciones
 	configure_uart();			// Configura E/S y habilita interrupciones
 	configure_systick();
+
 
 	// control del pase
 	bool control_pase = false;
@@ -796,12 +787,21 @@ int main(void)
 					alarm_pase =true;
 					accumulated_inactive_time = 0;  
 				}
+				if (abs(position_encoder) > 12)
+				{
+					picto_action(A,X);
+					picto_action(B,X);
+				}
 			}
 			else
 			{
 				accumulated_inactive_time = 0;
 				position_encoder_moved = false;
 				alarm_pase = false;
+
+				// reestablecer los pictos como estaban los escenario cuando vuelve a un final de carrera.
+				picto_action(A,ESC_target(0,escenario_app)^pase_A);
+				picto_action(B,ESC_target(1,escenario_app)^pase_B);
 			}
 			
 			
@@ -818,7 +818,7 @@ int main(void)
 				}
 			}
 
-			// cada vez que cambie escenario_app actualiza los solenoides.
+			// cada vez que cambie escenario_app solo por medio de banco de memoria actualiza los solenoides.
 			if (escenario_app != dif_escenario_app)
 			{
 				dif_escenario_app = escenario_app;
