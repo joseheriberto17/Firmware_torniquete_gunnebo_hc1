@@ -57,10 +57,11 @@ void not_ack_RS485(void);
 
 // definicion de los parametros de la aplicacion
 #define MAX_REVERSE_TOLERANCE 12 // cuantos contadores puede contar si el torniquete se devuelve
-#define COUNTER_ENCODER_PASE 60	 // valor minimo que tiene que contar position_encoder para validar un paso.
+#define COUNTER_ENCODER_PASE 60	 // valor que tiene que contar position_encoder para validar un paso.
 #define COUNTER_ENCODER_PASE_85P 50 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado.
 #define VALUE_TIMER_ALARM_PASE 40000  // Tiempo máximo (ms) fuera de final de carrera antes de alarma.
 #define VALUE_TIMEOUT_PASE 30 // valor que define por cuanto tiempo el sentido autorizado esta habilitado.
+#define COUNTER_ENCODER_PICTO 12 // número de pasos permitidos fuera del final de carrera, para reducir el rebote por parte de los pictogramas.
 
 // Pin de entrada de encoder por SEN_I.
 #define SEN_I_PIN PIO_PB13_IDX
@@ -787,7 +788,7 @@ int main(void)
 					alarm_pase =true;
 					accumulated_inactive_time = 0;  
 				}
-				if (abs(position_encoder) > 12)
+				if (abs(position_encoder) > COUNTER_ENCODER_PICTO)
 				{
 					picto_action(A,X);
 					picto_action(B,X);
