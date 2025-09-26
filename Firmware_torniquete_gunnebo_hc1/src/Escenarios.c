@@ -64,7 +64,7 @@ void esc_action_A(Pio *p_pio, const uint32_t ul_mask,uint8_t esc_app, bool level
 	bool Esc_init_A = 0;
 	bool Poralidad_SOL = 0;
 
-	ESC_target_A = ESC_target(0,esc_app);
+	ESC_target_A = ESC_target(A,esc_app);
 
 	Esc_init_A = pio_get(SW2_3_PIN_PORT, PIO_INPUT, SW2_3_PIN_MASK) ? 0 : 1;
 	Poralidad_SOL = Esc_init_A ^  ESC_target_A; // define la poralidad del solenoide que va a trabajar.
@@ -85,7 +85,7 @@ void esc_action_B(Pio *p_pio, const uint32_t ul_mask,uint8_t esc_app, bool level
 	bool Esc_init_B = 0;
 	bool Poralidad_SOL = 0;
 
-	ESC_target_B = ESC_target(1,esc_app);
+	ESC_target_B = ESC_target(B,esc_app);
 
 	Esc_init_B = pio_get(SW2_4_PIN_PORT, PIO_INPUT, SW2_4_PIN_MASK) ? 0 : 1;
 	Poralidad_SOL = Esc_init_B ^  ESC_target_B; // define la poralidad del solenoide que va a trabajar.
@@ -100,14 +100,14 @@ void esc_action_B(Pio *p_pio, const uint32_t ul_mask,uint8_t esc_app, bool level
 	picto_action(B,ESC_target_B^level);
 }
 
-// selecciona el escenario mediante el banco de memoria si esc_app esta definido, 
+// determina el modo de paso de un lado mediante el banco de memoria si esc_app esta definido, 
 // sino los escenarios definidos por el switche sw_2 (pines 1 y 2).
-bool ESC_target(uint8_t posicion,uint8_t esc_app)
+bool ESC_target(Lado lado,uint8_t esc_app)
 {
 	if (esc_app != 0)
 	{
-		return esc_table[esc_app-1][posicion];
+		return esc_table[esc_app-1][lado];
 	} else {
-		return esc_table[Read_SW_2_Esc()][posicion];
+		return esc_table[Read_SW_2_Esc()][lado];
 	}
 }

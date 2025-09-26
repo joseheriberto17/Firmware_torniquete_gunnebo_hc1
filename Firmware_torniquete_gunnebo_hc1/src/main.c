@@ -56,12 +56,13 @@ void configure_systick(void);
 void not_ack_RS485(void);
 
 // definicion de los parametros de la aplicacion
-#define MAX_REVERSE_TOLERANCE 12 // cuantos contadores puede contar si el torniquete se devuelve
-#define COUNTER_ENCODER_PASE 60	 // valor que tiene que contar position_encoder para validar un paso.
-#define COUNTER_ENCODER_PASE_85P 50 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado.
-#define VALUE_TIMER_ALARM_PASE 40000  // Tiempo máximo (ms) fuera de posicion de inicio antes de alarma.
-#define VALUE_TIMEOUT_PASE 30 // valor que define por cuanto tiempo el sentido autorizado esta habilitado.
-#define COUNTER_ENCODER_PICTO 12 // número de pasos permitidos fuera del posicion de inicio, para reducir el rebote por parte de los pictogramas.
+#define MAX_REVERSE_TOLERANCE 12	 // cuantos contadores puede contar si el torniquete se devuelve
+#define COUNTER_ENCODER_PASE 60		 // valor que tiene que contar position_encoder para validar un paso.
+#define COUNTER_ENCODER_PASE_85P 50	 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado.
+#define COUNTER_ENCODER_PICTO 14	 // número de pasos permitidos fuera del posicion de inicio, para reducir el rebote por parte de los pictogramas.
+
+#define VALUE_TIMER_ALARM_PASE 30000 // Tiempo máximo (ms) fuera de posicion de inicio antes de alarma.
+#define VALUE_TIMEOUT_PASE 30		 // valor que define por cuanto tiempo el sentido autorizado esta habilitado.
 
 // Pin de entrada de encoder por SEN_I.
 #define SEN_I_PIN PIO_PB13_IDX
@@ -127,8 +128,7 @@ void not_ack_RS485(void);
 #define ACCUMULATOR_B 0x14
 #define CONFIRMACION_FAIL 0x18
 #define ALARM_STATUS 0x1C
-// TODO: si durante un tiempo no se configuro el valor de CONF_ESCENARIO CONF_TIMEOUT
-// Activa la arlam y trabajacon vcon valores por defecto.
+
 #define CONF_STATUS 0x1D
 #define TIMEOUT_PASO 0x1E
 
@@ -188,7 +188,6 @@ volatile char error_code = 0x00;
 volatile uint32_t ms_ticks = 0;
 volatile bool timeout_pase = false;
 
-// TODO: definir la logica de alarma de torniquete.
 volatile bool alarm_pase = false;
 
 volatile uint8_t escenario_app = 0;
@@ -322,7 +321,6 @@ void handle_encoder(const uint32_t id, const uint32_t mask)
 			// se considera como intento de reversa y se activa la bandera.
 			if (abs(position_encoder_last - position_encoder) > MAX_REVERSE_TOLERANCE)
 			{
-				position_encoder = 0;
 				reversa_pase = true;
 			}
 
@@ -595,14 +593,14 @@ void UART1_Handler()
 					{
 						int port_address_temp = port_address;
 
-						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && !end_pase)
+						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && (!end_pase || ESC_target(A, escenario_app)))
 						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
 							break;
 						}
-						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && !end_pase)
+						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && (!end_pase || ESC_target(B, escenario_app)))
 						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
@@ -732,10 +730,9 @@ int main(void)
 
 	esc_init();
 	picto_init();
-	configure_pins();			// Configura E/S y habilita interrupciones
-	configure_uart();			// Configura E/S y habilita interrupciones
+	configure_pins(); // Configura E/S y habilita interrupciones
+	configure_uart(); // Configura E/S y habilita interrupciones
 	configure_systick();
-
 
 	// control del pase
 	bool control_pase = false;
@@ -752,7 +749,6 @@ int main(void)
 	uint32_t value_init_conf = millis();
 
 	uint32_t accumulated_inactive_time = 0;
-
 
 	// inicializar los solenoide
 	esc_action_A(LEFT_PIN_PORT, LEFT_PIN_MASK, escenario_app, 0);
@@ -773,24 +769,23 @@ int main(void)
 			if (!end_pase)
 			{
 				timer_while_delta = timer_while - timer_while_last;
-				timer_while_last = timer_while;	
-	
-				if (!position_encoder_moved) {
+				timer_while_last = timer_while;
+
+				if (!position_encoder_moved)
+				{
 					// Solo acumula tiempo si no hay movimiento
 					accumulated_inactive_time += timer_while_delta;
-				} else {
+				}
+				else
+				{
 					// Si hubo movimiento, pausa acumulación
 					position_encoder_moved = false;
 				}
-			
-				if (accumulated_inactive_time >= VALUE_TIMER_ALARM_PASE) {
-					alarm_pase =true;
-					accumulated_inactive_time = 0;  
-				}
-				if (abs(position_encoder) > COUNTER_ENCODER_PICTO)
+
+				if (accumulated_inactive_time >= VALUE_TIMER_ALARM_PASE)
 				{
-					picto_action(A,X);
-					picto_action(B,X);
+					alarm_pase = true;
+					accumulated_inactive_time = 0;
 				}
 			}
 			else
@@ -798,13 +793,19 @@ int main(void)
 				accumulated_inactive_time = 0;
 				position_encoder_moved = false;
 				alarm_pase = false;
-
-				// reestablecer los pictos como estaban los escenario cuando vuelve a un posicion de inicio.
-				picto_action(A,ESC_target(0,escenario_app)^pase_A);
-				picto_action(B,ESC_target(1,escenario_app)^pase_B);
 			}
-			
-			
+
+			if (abs(position_encoder) > COUNTER_ENCODER_PICTO)
+			{
+				picto_action(A, X);
+				picto_action(B, X);
+			}
+			else
+			{
+				// reestablecer los pictos como estaban los escenario cuando vuelve a un posicion de inicio.
+				picto_action(A, ESC_target(A, escenario_app) ^ pase_A);
+				picto_action(B, ESC_target(B, escenario_app) ^ pase_B);
+			}
 
 			// Lógica de control de configuración.
 			// ---------------------------------------------------------------------------------------------------------
@@ -846,7 +847,6 @@ int main(void)
 			// Lógica de configuración desde APP.
 			// ---------------------------------------------------------------------------------
 			//
-			// TODO: confirmacion de escenario de torniquete.
 			if (port_slots_write[CONF_ESCENARIO] != 0x00) // usar valores de escenario mayores a 0
 			{
 				escenario_app = port_slots_write[CONF_ESCENARIO]; // es esta varible se almacena el escenario de torniquete.
@@ -854,7 +854,6 @@ int main(void)
 				port_slots_read[CONF_STATUS] = 0x00;			  // Alarma de configuracion, nomalizar.
 			}
 
-			// TODO: configuración de timeout de pase.
 			if (port_slots_write[CONF_TIMEOUT] > 5) // valor mínimo de 5 segundos
 			{
 				conf_timeout_pase = port_slots_write[CONF_TIMEOUT]; // es esta varible se almacena el timeout de pase.
@@ -885,8 +884,6 @@ int main(void)
 				port_slots_read[TIMEOUT_PASO] = 0x00;
 			}
 
-			// TODO: alarma para indicar que torniquete está en posición no permitida.
-			// desarollar la logica de alarma de torniquete.
 			if (alarm_pase)
 			{
 				port_slots_read[ALARM_STATUS] = 0xFF;

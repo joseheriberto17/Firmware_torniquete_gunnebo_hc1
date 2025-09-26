@@ -231,7 +231,7 @@
           </JtagDaisyChainDevices>
         </InterfaceProperties>
         <InterfaceName>JTAG</InterfaceName>
-        <JlinkConfigFile>C:\Users\GESTION_LABORATORIO\Documents\Repositorios_git\Firmware_torniquete_gunnebo_hc1\Firmware_torniquete_gunnebo_hc1\jlink.config</JlinkConfigFile>
+        <JlinkConfigFile>C:\Users\USUARIO\Documents\Atmel Studio\7.0\Firmware_torniquete_gunnebo_hc1\Firmware_torniquete_gunnebo_hc1\jlink.config</JlinkConfigFile>
       </ToolOptions>
       <ToolType>com.atmel.avrdbg.tool.samice</ToolType>
       <ToolNumber>28011418</ToolNumber>

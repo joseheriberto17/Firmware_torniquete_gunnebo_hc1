@@ -212,20 +212,45 @@
         <board id="board.arduino_due_x" value="Add" config="" content-id="Atmel.ASF" />
       </framework-data>
     </AsfFrameworkConfig>
-    <avrtool>custom</avrtool>
-    <avrtoolserialnumber />
+    <avrtool>com.atmel.avrdbg.tool.samice</avrtool>
+    <avrtoolserialnumber>28011418</avrtoolserialnumber>
     <avrdeviceexpectedsignature>0x285E0A60</avrdeviceexpectedsignature>
     <custom>
-      <ToolOptions xmlns="">
+      <ToolOptions>
         <InterfaceProperties>
         </InterfaceProperties>
+        <InterfaceName>
+        </InterfaceName>
       </ToolOptions>
-      <ToolType xmlns="">custom</ToolType>
-      <ToolNumber xmlns="">
+      <ToolType>custom</ToolType>
+      <ToolNumber>
       </ToolNumber>
-      <ToolName xmlns="">Custom Programming Tool</ToolName>
+      <ToolName>Custom Programming Tool</ToolName>
     </custom>
-    <CustomProgrammingToolCommand>C:\Users\omard\AppData\Local\Arduino15\packages\arduino\tools\bossac\1.6.1-arduino\bossac.exe -p COM5 -e -w -v -b "C:\Users\omard\OneDrive\Documents\Atmel Studio\7.0\Firmware_torniquete_gunnebo_hc1\Firmware_Arduino_Due_torniquete_gunnebo_hc1\Debug\Firmware_Arduino_Due_torniquete_gunnebo_hc1.bin"</CustomProgrammingToolCommand>
+    <CustomProgrammingToolCommand>C:\Users\USUARIO\AppData\Local\Arduino15\packages\arduino\tools\bossac\1.6.1-arduino\bossac.exe -p COM6 -e -w -v -b "C:\Users\USUARIO\Documents\Atmel Studio\7.0\Firmware_torniquete_gunnebo_hc1\Firmware_Arduino_Due_torniquete_gunnebo_hc1\Debug\Firmware_Arduino_Due_torniquete_gunnebo_hc1.bin"</CustomProgrammingToolCommand>
+    <avrtoolinterface>JTAG</avrtoolinterface>
+    <com_atmel_avrdbg_tool_samice>
+      <ToolOptions>
+        <InterfaceProperties>
+          <JtagDbgClock>0</JtagDbgClock>
+          <JtagEnableExtResetOnStartSession>true</JtagEnableExtResetOnStartSession>
+          <JtagInChain>false</JtagInChain>
+          <JtagDevicesBefore>0</JtagDevicesBefore>
+          <JtagDevicesAfter>0</JtagDevicesAfter>
+          <JtagInstrBitsBefore>0</JtagInstrBitsBefore>
+          <JtagInstrBitsAfter>0</JtagInstrBitsAfter>
+          <JtagSelectedDeviceIndexInChain>0</JtagSelectedDeviceIndexInChain>
+          <JtagDaisyChainDevices>
+          </JtagDaisyChainDevices>
+        </InterfaceProperties>
+        <InterfaceName>JTAG</InterfaceName>
+        <JlinkConfigFile>C:\Users\USUARIO\Documents\Atmel Studio\7.0\Firmware_torniquete_gunnebo_hc1\Firmware_Arduino_Due_torniquete_gunnebo_hc1\jlink.config</JlinkConfigFile>
+      </ToolOptions>
+      <ToolType>com.atmel.avrdbg.tool.samice</ToolType>
+      <ToolNumber>28011418</ToolNumber>
+      <ToolName>SAM-ICE</ToolName>
+    </com_atmel_avrdbg_tool_samice>
+    <avrtoolinterfaceclock>0</avrtoolinterfaceclock>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
@@ -510,6 +535,7 @@
     <Folder Include="src\ASF\thirdparty\CMSIS\Lib\" />
     <Folder Include="src\ASF\thirdparty\CMSIS\Lib\GCC\" />
     <Folder Include="src\config\" />
+    <Folder Include="src\driver" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\asf.h">
@@ -957,6 +983,12 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\ASF\sam\utils\syscalls\gcc\syscalls.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\driver\encoder.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\driver\encoder.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\main.c">
