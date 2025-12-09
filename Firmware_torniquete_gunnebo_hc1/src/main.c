@@ -84,12 +84,17 @@ void not_ack_RS485(void);
 #define CONF_A_PIN_MASK PIO_PA16
 #define CONF_A_PIN_PORT PIOA
 
-// Pin de salida de solenoide B.
+// Pin de salida del Rele K3A.
+#define RELE_PIN PIO_PA30_IDX
+#define RELE_PIN_MASK PIO_PA30
+#define RELE_PIN_PORT PIOA
+
+// Pin de salida de solenoide B (Rele K1A). 
 #define RIGHT_PIN PIO_PA3_IDX
 #define RIGHT_PIN_MASK PIO_PA3
 #define RIGHT_PIN_PORT PIOA
 
-// Pin de salida de solenoide A.
+// Pin de salida de solenoide A (Rele K1A).
 #define LEFT_PIN PIO_PA29_IDX
 #define LEFT_PIN_MASK PIO_PA29
 #define LEFT_PIN_PORT PIOA
@@ -360,6 +365,7 @@ void configure_pins(void)
 	pio_configure(LED_SEN_S_PIN_PORT, PIO_OUTPUT_0, LED_SEN_S_PIN_MASK, PIO_DEFAULT);
 	pio_configure(RIGHT_PIN_PORT, PIO_OUTPUT_0, RIGHT_PIN_MASK, PIO_DEFAULT);
 	pio_configure(LEFT_PIN_PORT, PIO_OUTPUT_0, LEFT_PIN_MASK, PIO_DEFAULT);
+	pio_configure(RELE_PIN_PORT, PIO_OUTPUT_0, RELE_PIN_MASK, PIO_DEFAULT);
 
 	// Entrada GPIO
 	pio_configure(SEN_I_PIN_PORT, PIO_INPUT, SEN_I_PIN_MASK, PIO_DEFAULT);
@@ -795,13 +801,15 @@ int main(void)
 				alarm_pase = false;
 			}
 
-			if (abs(position_encoder) > COUNTER_ENCODER_PICTO)
+			if (position_encoder > COUNTER_ENCODER_PICTO)
 			{
+ 				pio_set(RELE_PIN_PORT,RELE_PIN_MASK);
 				picto_action(A, X);
 				picto_action(B, X);
 			}
 			else
 			{
+				pio_clear(RELE_PIN_PORT,RELE_PIN_MASK);
 				// reestablecer los pictos como estaban los escenario cuando vuelve a un posicion de inicio.
 				picto_action(A, ESC_target(A, escenario_app) ^ pase_A);
 				picto_action(B, ESC_target(B, escenario_app) ^ pase_B);
