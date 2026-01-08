@@ -56,9 +56,10 @@ void configure_systick(void);
 void not_ack_RS485(void);
 
 // definicion de los parametros de la aplicacion
+
 #define MAX_REVERSE_TOLERANCE 12	 // cuantos contadores puede contar si el torniquete se devuelve
-#define COUNTER_ENCODER_PASE 60		 // valor que tiene que contar position_encoder para validar un paso.
-#define COUNTER_ENCODER_PASE_85P 50	 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado.
+#define COUNTER_ENCODER_PASE 60		 // valor que tiene que contar position_encoder para validar un paso (giro casi completo de torniquete).
+#define COUNTER_ENCODER_PASE_85P 50	 // valor del contador de position_encoder donde tiene que desabilitar el paso autorizado (85 por ciento del giro).
 #define COUNTER_ENCODER_PICTO 14	 // número de pasos permitidos fuera del posicion de inicio, para reducir el rebote por parte de los pictogramas.
 
 #define VALUE_TIMER_ALARM_PASE 30000 // Tiempo máximo (ms) fuera de posicion de inicio antes de alarma.
@@ -599,14 +600,14 @@ void UART1_Handler()
 					{
 						int port_address_temp = port_address;
 
-						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && (!end_pase || ESC_target(A, escenario_app)))
+						if ((port_address_temp == PASO_MODE_A) && (bufer_serial_rx[4] != 0x00) && (port_slots_write[PASO_MODE_A] == 0xFF || ESC_target(A, escenario_app)))
 						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
 							rx_idx_RS485 = 0;
 							break;
 						}
-						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && (!end_pase || ESC_target(B, escenario_app)))
+						if ((port_address_temp == PASO_MODE_B) && (bufer_serial_rx[4] != 0x00) && (port_slots_write[PASO_MODE_B] == 0xFF || ESC_target(B, escenario_app)))
 						{
 							error_code = ERR_BUSY;
 							not_ack_RS485();
